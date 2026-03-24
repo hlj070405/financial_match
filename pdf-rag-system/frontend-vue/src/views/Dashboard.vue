@@ -28,11 +28,11 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import Sidebar from '../components/Sidebar.vue'
-import ChatModule from '../components/ChatModule.vue'
-import LogicFlowModule from '../components/LogicFlowModule.vue'
-import DataVisualization from '../components/DataVisualization.vue'
-import SentimentModule from '../components/SentimentModule.vue'
+import Sidebar from '../layouts/Sidebar.vue'
+import ChatModule from '../modules/chat/ChatModule.vue'
+import LogicFlowModule from '../modules/logic/LogicFlowModule.vue'
+import DataVisualization from '../modules/analysis/DataVisualization.vue'
+import SentimentModule from '../modules/sentiment/SentimentModule.vue'
 
 const router = useRouter()
 const activeModule = ref('chat')

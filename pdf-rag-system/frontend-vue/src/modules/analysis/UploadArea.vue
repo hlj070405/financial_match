@@ -84,8 +84,8 @@
 
 <script setup>
 import { ref } from 'vue'
-import { uploadPDF } from '../api/analysis'
-import GlassButton from './GlassButton.vue'
+import { uploadPDF } from '../../api/analysis'
+import GlassButton from '../../components/GlassButton.vue'
 
 const emit = defineEmits(['file-uploaded', 'analyze'])
 const props = defineProps({

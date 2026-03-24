@@ -370,7 +370,7 @@ import {
   Trash2
 } from 'lucide-vue-next'
 import ReportPlaceholder from './ReportPlaceholder.vue'
-import PdfViewer from './PdfViewer.vue'
+import PdfViewer from '../../components/PdfViewer.vue'
 import FileWorkspace from './FileWorkspace.vue'
 
 const cn = (...inputs) => twMerge(clsx(inputs))

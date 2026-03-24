@@ -28,8 +28,8 @@
 
 <script setup>
 import { ref } from 'vue'
-import UploadArea from '../components/UploadArea.vue'
-import ResultDisplay from '../components/ResultDisplay.vue'
+import UploadArea from '../modules/analysis/UploadArea.vue'
+import ResultDisplay from '../modules/analysis/ResultDisplay.vue'
 import { analyzeDocumentStream } from '../api/analysis'
 
 const isAnalyzing = ref(false)
