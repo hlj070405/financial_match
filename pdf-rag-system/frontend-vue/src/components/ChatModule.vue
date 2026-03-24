@@ -344,7 +344,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, onMounted, defineEmits, computed } from 'vue'
+import { ref, nextTick, onMounted, computed } from 'vue'
 import axios from 'axios'
 import { marked } from 'marked'
 import { clsx } from 'clsx'
@@ -367,8 +367,7 @@ import {
   Send,
   ShieldCheck,
   Pencil,
-  Trash2,
-  MoreHorizontal
+  Trash2
 } from 'lucide-vue-next'
 import ReportPlaceholder from './ReportPlaceholder.vue'
 import PdfViewer from './PdfViewer.vue'
@@ -401,7 +400,7 @@ const loadWorkspaceDocuments = async () => {
   try {
     const token = localStorage.getItem('access_token')
     if (!token) return
-    const resp = await axios.get('http://localhost:8000/api/documents', {
+    const resp = await axios.get('/api/documents', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
 
@@ -491,7 +490,7 @@ const loadChatHistory = async () => {
       return
     }
     console.log('正在加载历史记录...')
-    const response = await axios.get('http://localhost:8000/api/chat/history', {
+    const response = await axios.get('/api/chat/history', {
       headers: { 'Authorization': `Bearer ${token}` }
     })
     console.log('历史记录响应:', response.data)
@@ -526,7 +525,7 @@ const handleRename = async () => {
   
   try {
     const token = localStorage.getItem('access_token')
-    await axios.put(`http://localhost:8000/api/chat/history/${selectedSessionId.value}`, {
+    await axios.put(`/api/chat/history/${selectedSessionId.value}`, {
       title: renameInput.value
     }, {
       headers: { 'Authorization': `Bearer ${token}` }
@@ -559,7 +558,7 @@ const confirmDeleteSession = async (sessionId) => {
 const deleteSession = async (sessionId) => {
   try {
     const token = localStorage.getItem('access_token')
-    await axios.delete(`http://localhost:8000/api/chat/history/${sessionId}`, {
+    await axios.delete(`/api/chat/history/${sessionId}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
 
@@ -658,7 +657,7 @@ const loadConversation = async (conversationId) => {
     }
     
     const token = localStorage.getItem('access_token')
-    const response = await axios.get(`http://localhost:8000/api/chat/history/${conversationId}`, {
+    const response = await axios.get(`/api/chat/history/${conversationId}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     })
 
@@ -746,7 +745,7 @@ const handleFileUpload = async (event) => {
     formData.append('file', file)
 
     const response = await axios.post(
-      'http://localhost:8000/api/upload-file',
+      '/api/upload-file',
       formData,
       {
         headers: {
@@ -892,7 +891,7 @@ const handleSend = async () => {
       payload.conversation_id = viewConversationId
     }
 
-    const response = await fetch('http://localhost:8000/api/chat', {
+    const response = await fetch('/api/chat', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -1108,7 +1107,7 @@ const startNewConversation = () => {
 // 打开PDF查看器
 const openPdfViewer = (report) => {
   currentPdf.value = {
-    pdfUrl: `http://localhost:8000/${report.pdf_path}`,
+    pdfUrl: `/${report.pdf_path}`,
     title: getReportDisplayName(report),
     subtitle: `股票代码: ${report.stock_code || '未知'}`
   }
@@ -1129,7 +1128,7 @@ const analyzeWithReport = async (report) => {
     scrollToBottom()
     
     const uploadResponse = await axios.post(
-      'http://localhost:8000/api/upload-local-pdf',
+      '/api/upload-local-pdf',
       {
         pdf_path: report.pdf_path,
         company: report.company,

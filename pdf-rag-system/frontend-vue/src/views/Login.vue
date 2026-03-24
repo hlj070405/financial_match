@@ -245,8 +245,6 @@ const rememberMe = ref(false)
 const isLoading = ref(false)
 const errorMessage = ref('')
 
-const API_BASE_URL = 'http://localhost:8000'
-
 const handleLogin = async () => {
   if (!username.value || !password.value) {
     errorMessage.value = '请输入用户名和密码'
@@ -257,7 +255,7 @@ const handleLogin = async () => {
   errorMessage.value = ''
   
   try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+    const response = await fetch('/api/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

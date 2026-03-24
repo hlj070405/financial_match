@@ -29,7 +29,7 @@ router.beforeEach(async (to, from, next) => {
     }
     
     try {
-      const response = await fetch('http://localhost:8000/api/auth/me', {
+      const response = await fetch('/api/auth/me', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -52,7 +52,7 @@ router.beforeEach(async (to, from, next) => {
   
   if (to.path === '/' && token) {
     try {
-      const response = await fetch('http://localhost:8000/api/auth/me', {
+      const response = await fetch('/api/auth/me', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
