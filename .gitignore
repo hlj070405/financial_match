@@ -1,0 +1,49 @@
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+*.egg-info/
+*.egg
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dify docker volumes (runtime data)
+dify/docker/volumes/
+
+# Dify env files
+dify/docker/middleware.env
+dify/docker/docker-compose.override.yaml
+dify/docker/nginx/conf.d/default.conf
+dify/docker/nginx/ssl/
+
+# Backend env
+pdf-rag-system/backend/.env
+pdf-rag-system/backend/venv/
+pdf-rag-system/backend/__pycache__/
+pdf-rag-system/backend/*.db
+pdf-rag-system/frontend-vue/node_modules/
+pdf-rag-system/frontend-vue/dist/
+
+# Downloads
+test_downloads/
+pdf-rag-system/backend/downloads/
+pdf-rag-system/backend/test_downloads/
+
+# Logs
+*.log
