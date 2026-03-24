@@ -125,6 +125,7 @@ import {
   GitMerge, 
   BarChart3, 
   Activity,
+  CandlestickChart,
   User,
   ChevronRight,
   LogOut,
@@ -167,6 +168,12 @@ const menuItems = [
     title: '舆情溯源·感知',
     subtitle: '实时共振',
     icon: Activity
+  },
+  {
+    id: 'market',
+    title: '幻数·行情终端',
+    subtitle: 'A股数据',
+    icon: CandlestickChart
   }
 ]
 </script>

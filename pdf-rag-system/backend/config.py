@@ -15,5 +15,9 @@ SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-keep-it-secret")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30 * 24 * 60  # 30 days
 
+# Tushare
+TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN", "")
+TUSHARE_HTTP_PROXY = os.getenv("TUSHARE_HTTP_PROXY", "")
+
 # Paths
 FINANCIAL_REPORTS_DIR = "./financial_reports"

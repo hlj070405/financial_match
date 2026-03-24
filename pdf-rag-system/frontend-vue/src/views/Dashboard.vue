@@ -20,6 +20,9 @@
         <div v-show="activeModule === 'sentiment'" class="h-full w-full">
           <SentimentModule @logout="handleLogout" />
         </div>
+        <div v-show="activeModule === 'market'" class="h-full w-full p-6">
+          <MarketModule @logout="handleLogout" />
+        </div>
       </main>
     </div>
   </div>
@@ -33,6 +36,7 @@ import ChatModule from '../modules/chat/ChatModule.vue'
 import LogicFlowModule from '../modules/logic/LogicFlowModule.vue'
 import DataVisualization from '../modules/analysis/DataVisualization.vue'
 import SentimentModule from '../modules/sentiment/SentimentModule.vue'
+import MarketModule from '../modules/market/MarketModule.vue'
 
 const router = useRouter()
 const activeModule = ref('chat')

@@ -45,5 +45,8 @@ test_downloads/
 pdf-rag-system/backend/downloads/
 pdf-rag-system/backend/test_downloads/
 
+# Backups
+backups/
+
 # Logs
 *.log

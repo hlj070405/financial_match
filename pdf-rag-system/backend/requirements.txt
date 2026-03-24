@@ -13,3 +13,4 @@ passlib[bcrypt]>=1.7.4
 email-validator>=2.2.0
 akshare>=1.18.30
 python-dateutil>=2.9.0
+tushare>=1.4.0
