@@ -11,9 +11,9 @@ import os
 from pathlib import Path
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
-from report_intent_service import ReportIntentService
-from deepseek_service import DeepSeekService
-from report_timing import ReportTimingService, ReportType
+from services.report_intent_service import ReportIntentService
+from services.deepseek_service import DeepSeekService
+from services.report_timing import ReportTimingService, ReportType
 
 # 加载环境变量
 load_dotenv()

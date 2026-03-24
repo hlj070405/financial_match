@@ -6,7 +6,7 @@
 import json
 import re
 from typing import List, Dict, Optional
-from deepseek_service import DeepSeekService
+from services.deepseek_service import DeepSeekService
 
 class ReportIntentService:
     """财报意图识别服务"""

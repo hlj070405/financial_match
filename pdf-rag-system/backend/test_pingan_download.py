@@ -1,6 +1,6 @@
 """测试平安银行财报下载"""
 import asyncio
-from simple_report_service import SimplifiedReportService
+from services.simple_report_service import SimplifiedReportService
 
 async def test():
     service = SimplifiedReportService()

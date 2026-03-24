@@ -6,12 +6,7 @@ from jose import JWTError, jwt
 import bcrypt
 from sqlalchemy.orm import Session
 from database import get_db, User
-import os
-
-# 配置
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-keep-it-secret")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30 * 24 * 60  # 30 days
+from config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 

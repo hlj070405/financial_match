@@ -8,8 +8,8 @@
 
 import json
 from typing import Dict, List, Optional
-from deepseek_service import DeepSeekService
-from simple_report_service import SimplifiedReportService
+from services.deepseek_service import DeepSeekService
+from services.simple_report_service import SimplifiedReportService
 
 
 class ChatPreprocessor:

@@ -13,8 +13,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
 from database import SessionLocal, ChatHistory
-from deepseek_service import DeepSeekService
-from chat_history_service import ChatHistoryService
+from services.deepseek_service import DeepSeekService
+from services.chat_history_service import ChatHistoryService
 import json
 
 load_dotenv()

@@ -1,7 +1,7 @@
 import json
 from sqlalchemy.orm import Session
 from database import ChatHistory
-from deepseek_service import DeepSeekService
+from services.deepseek_service import DeepSeekService
 from typing import List, Optional
 import asyncio
 
