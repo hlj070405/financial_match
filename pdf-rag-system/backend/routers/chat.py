@@ -297,7 +297,7 @@ async def chat_with_ai(
                 except Exception as placeholder_error:
                     print(f"[占位记录] 创建失败但不影响响应: {str(placeholder_error)}")
             
-            # 使用全局客户端复用连接
+            # 每次创建新客户端，避免连接池复用导致流式挂起
             client = await get_dify_client()
             headers = {
                 'Authorization': f'Bearer {DIFY_API_KEY}',

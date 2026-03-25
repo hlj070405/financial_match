@@ -10,16 +10,22 @@ _dify_http_client = None
 
 
 async def get_dify_client():
-    """获取或创建 Dify HTTP 客户端"""
+    """获取或创建 Dify HTTP 客户端（每次创建新实例用于流式请求，避免连接池复用导致挂起）"""
+    return httpx.AsyncClient(
+        timeout=httpx.Timeout(300.0, connect=10.0),
+        http2=False
+    )
+
+
+async def reset_dify_client():
+    """重置全局客户端（Dify重启后调用）"""
     global _dify_http_client
-    if _dify_http_client is None:
-        limits = httpx.Limits(max_keepalive_connections=20, max_connections=100, keepalive_expiry=30.0)
-        _dify_http_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(300.0, connect=5.0),
-            limits=limits,
-            http2=False
-        )
-    return _dify_http_client
+    if _dify_http_client is not None:
+        try:
+            await _dify_http_client.aclose()
+        except Exception:
+            pass
+        _dify_http_client = None
 
 
 def resolve_pdf_full_path(pdf_path: str) -> str:
