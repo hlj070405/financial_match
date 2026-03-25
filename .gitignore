@@ -48,5 +48,9 @@ pdf-rag-system/backend/test_downloads/
 # Backups
 backups/
 
+# Financial report PDFs
+pdf-rag-system/backend/financial_reports/*.pdf
+pdf-rag-system/backend/financial_reports/uploads/
+
 # Logs
 *.log

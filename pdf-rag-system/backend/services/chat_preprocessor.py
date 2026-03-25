@@ -7,6 +7,8 @@
 """
 
 import json
+import re
+from datetime import datetime
 from typing import Dict, List, Optional
 from services.deepseek_service import DeepSeekService
 from services.simple_report_service import SimplifiedReportService
@@ -84,10 +86,60 @@ class ChatPreprocessor:
         except json.JSONDecodeError as e:
             print(f"[预处理] JSON解析失败: {e}")
             print(f"[预处理] LLM响应: {response}")
+            # 降级：关键词判断
+            await self._fallback_report_check(user_message, result)
         except Exception as e:
-            print(f"[预处理] 处理失败: {e}")
+            print(f"[预处理] LLM调用失败: {e}，使用关键词降级判断")
+            await self._fallback_report_check(user_message, result)
         
         return result
+    
+    async def _fallback_report_check(self, user_message: str, result: Dict):
+        """LLM不可用时的关键词降级判断"""
+        # 常见公司名→股票代码映射
+        company_map = {
+            '茅台': ('贵州茅台', '600519'), '贵州茅台': ('贵州茅台', '600519'),
+            '比亚迪': ('比亚迪', '002594'), '宁德时代': ('宁德时代', '300750'),
+            '五粮液': ('五粮液', '000858'), '中国平安': ('中国平安', '601318'),
+            '平安': ('中国平安', '601318'), '招商银行': ('招商银行', '600036'),
+            '招行': ('招商银行', '600036'), '工商银行': ('工商银行', '601398'),
+            '工行': ('工商银行', '601398'), '腾讯': ('腾讯', '00700'),
+            '阿里': ('阿里巴巴', '09988'), '阿里巴巴': ('阿里巴巴', '09988'),
+            '小米': ('小米', '01810'), '美的': ('美的集团', '000333'),
+            '格力': ('格力电器', '000651'), '万科': ('万科A', '000002'),
+            '恒瑞医药': ('恒瑞医药', '600276'), '海天味业': ('海天味业', '603288'),
+            '中国中免': ('中国中免', '601888'), '隆基': ('隆基绿能', '601012'),
+            '宁波银行': ('宁波银行', '002142'), '兴业银行': ('兴业银行', '601166'),
+            '中信证券': ('中信证券', '600030'), '立讯精密': ('立讯精密', '002475'),
+        }
+        
+        # 检查消息中是否包含公司名
+        matched_companies = []
+        for keyword, (name, code) in company_map.items():
+            if keyword in user_message:
+                if not any(c['stock_code'] == code for c in matched_companies):
+                    matched_companies.append({'name': name, 'stock_code': code})
+        
+        # 也检查6位数字股票代码
+        code_matches = re.findall(r'\b(\d{6})\b', user_message)
+        for code in code_matches:
+            if not any(c['stock_code'] == code for c in matched_companies):
+                matched_companies.append({'name': code, 'stock_code': code})
+        
+        if matched_companies:
+            print(f"[预处理-降级] 关键词匹配到 {len(matched_companies)} 家公司: {[c['name'] for c in matched_companies]}")
+            result["need_financial_report"] = True
+            
+            if self.report_service is None:
+                self.report_service = SimplifiedReportService()
+            
+            try:
+                report_result = await self.report_service.process_user_query(user_message)
+                result["financial_reports"] = report_result.get("downloads", [])
+            except Exception as e:
+                print(f"[预处理-降级] 财报下载也失败: {e}")
+        else:
+            print(f"[预处理-降级] 未匹配到公司名，跳过财报下载")
     
     def _build_preprocessing_prompt(self, user_message: str, is_first_message: bool) -> str:
         """构建预处理提示词 - 一次性提取所有信息"""

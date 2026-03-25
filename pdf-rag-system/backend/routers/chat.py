@@ -283,21 +283,22 @@ async def chat_with_ai(
                 
                 financial_reports_future = asyncio.create_task(download_reports_async())
             
-            # 如果是新会话，创建占位记录
+            # 如果是新会话，创建占位记录（fire-and-forget，不阻塞Dify请求）
             generated_title = None
             if is_new_conversation and request.save_history:
-                try:
-                    temp_title = request.message[:20] if len(request.message) > 20 else request.message
-                    await chat_history_service.create_placeholder_chat(
-                        db=db,
-                        user_id=current_user.id,
-                        conversation_id=conversation_id,
-                        message=request.message
-                    )
-                except Exception as placeholder_error:
-                    print(f"[占位记录] 创建失败但不影响响应: {str(placeholder_error)}")
+                async def _create_placeholder():
+                    try:
+                        await chat_history_service.create_placeholder_chat(
+                            db=db,
+                            user_id=current_user.id,
+                            conversation_id=conversation_id,
+                            message=request.message
+                        )
+                    except Exception as placeholder_error:
+                        print(f"[占位记录] 创建失败但不影响响应: {str(placeholder_error)}")
+                asyncio.create_task(_create_placeholder())
             
-            # 每次创建新客户端，避免连接池复用导致流式挂起
+            # 获取全局 Dify HTTP 客户端
             client = await get_dify_client()
             headers = {
                 'Authorization': f'Bearer {DIFY_API_KEY}',

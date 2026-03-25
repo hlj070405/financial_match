@@ -1,5 +1,5 @@
 <template>
-  <div class="h-full flex flex-col gap-6 p-2 font-sans overflow-hidden">
+  <div class="h-full flex flex-col gap-6 p-2 font-sans overflow-y-auto custom-scrollbar">
     <!-- Header Section -->
     <div class="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm shrink-0 flex items-center justify-between">
       <div>
@@ -9,443 +9,135 @@
           </div>
           幻诊·全景运营评估
         </h2>
-        <p class="text-sm text-gray-500 mt-1.5 ml-1">透视真相的"心" — 企业财务健康度全景分析</p>
+        <p class="text-sm text-gray-500 mt-1.5 ml-1">
+          透视真相的"心" — AI驱动的企业财务健康度全景分析
+        </p>
       </div>
-      
+
       <div class="flex items-center gap-3">
-        <div class="flex items-center bg-gray-50 rounded-xl p-1 border border-gray-100">
-           <button 
-             v-for="period in ['近7天', '近30天', '本季度', '本年度']" 
-             :key="period"
-             class="px-3 py-1.5 text-xs font-medium rounded-lg transition-all hover:text-gray-900 text-gray-500 hover:bg-white hover:shadow-sm relative group overflow-hidden"
-           >
-             <div class="absolute bottom-0 left-0 w-full h-0.5 bg-orange-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-             {{ period }}
-           </button>
-        </div>
-        <button class="p-2.5 hover:bg-gray-50 rounded-xl text-gray-400 hover:text-gray-600 transition-colors border border-transparent hover:border-gray-100 relative group overflow-hidden">
-          <div class="absolute bottom-0 left-0 w-full h-0.5 bg-orange-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          <Download class="w-5 h-5" />
-        </button>
-      </div>
-    </div>
-
-    <!-- Metrics Grid -->
-    <div class="grid grid-cols-4 gap-6 shrink-0">
-      <div v-for="metric in metrics" :key="metric.title" class="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all group">
-        <div class="flex items-center justify-between mb-4">
-          <span class="text-sm font-medium text-gray-500">{{ metric.title }}</span>
-          <div :class="cn('w-8 h-8 rounded-lg flex items-center justify-center transition-colors', metric.bgClass, metric.textClass)">
-            <component :is="metric.icon" class="w-4 h-4" />
-          </div>
-        </div>
-        <div class="flex items-baseline justify-between">
-          <div class="text-2xl font-bold text-gray-900">{{ metric.value }}</div>
-          <div class="flex items-center text-xs font-medium bg-gray-50 px-2 py-1 rounded-full">
-            <component 
-              :is="metric.trend === 'up' ? TrendingUp : TrendingDown" 
-              :class="cn('w-3 h-3 mr-1', metric.trend === 'up' ? 'text-emerald-500' : 'text-rose-500')" 
-            />
-            <span :class="metric.trend === 'up' ? 'text-emerald-600' : 'text-rose-600'">{{ metric.change }}</span>
-          </div>
+        <!-- 公司输入 -->
+        <div class="flex items-center gap-2">
+          <input
+            v-model="companyInput"
+            @keydown.enter="fetchDiagnosis"
+            type="text"
+            placeholder="输入公司名称..."
+            class="px-4 py-2 text-sm border border-gray-200 rounded-xl bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 w-48 transition-all"
+          />
+          <button
+            @click="fetchDiagnosis"
+            :disabled="loading"
+            class="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-xl hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            <Loader2 v-if="loading" class="w-4 h-4 animate-spin" />
+            <Search v-else class="w-4 h-4" />
+            {{ loading ? '分析中...' : '诊断' }}
+          </button>
         </div>
       </div>
     </div>
 
-    <!-- Charts Grid -->
-    <div class="grid grid-cols-2 gap-6 flex-1 min-h-0">
-      <!-- Revenue Chart -->
-      <div class="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm flex flex-col min-h-0">
-        <div class="flex items-center justify-between mb-6">
-          <h3 class="text-sm font-bold text-gray-900 flex items-center gap-2">
-            <LineChart class="w-4 h-4 text-blue-500" />
-            营收与利润趋势
-          </h3>
-          <button class="text-gray-400 hover:text-gray-600">
-            <MoreHorizontal class="w-4 h-4" />
-          </button>
+    <!-- Loading State -->
+    <div v-if="loading && !diagnosisData" class="flex-1 flex items-center justify-center">
+      <div class="text-center">
+        <Loader2 class="w-10 h-10 animate-spin text-blue-500 mx-auto" />
+        <p class="text-sm text-gray-500 mt-4">AI 正在分析企业财务数据...</p>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div v-else-if="!diagnosisData" class="flex-1 flex items-center justify-center">
+      <div class="text-center max-w-md">
+        <div class="p-4 rounded-2xl bg-gray-50 inline-block mb-4">
+          <BarChart3 class="w-12 h-12 text-gray-300" />
         </div>
-        <div ref="revenueChart" class="flex-1 w-full min-h-[200px]"></div>
+        <h3 class="text-lg font-semibold text-gray-700 mb-2">输入公司名称开始诊断</h3>
+        <p class="text-sm text-gray-400 leading-relaxed">
+          AI 将自动分析企业财报，提取核心指标，生成行业对标与风险评估。每家公司的分析结果由 AI 自主编排，展示最有价值的信息。
+        </p>
+      </div>
+    </div>
+
+    <!-- Diagnosis Content -->
+    <template v-else>
+      <!-- Summary Banner -->
+      <div v-if="diagnosisData.summary" class="bg-gradient-to-r from-gray-900 to-gray-800 rounded-2xl p-6 text-white shrink-0">
+        <div class="flex items-center gap-2 mb-2">
+          <Sparkles class="w-4 h-4 text-orange-400" />
+          <span class="text-xs font-semibold text-orange-300 uppercase tracking-wider">AI 诊断摘要</span>
+        </div>
+        <h3 class="text-lg font-bold mb-1">{{ diagnosisData.company }} · {{ diagnosisData.period }}</h3>
+        <p class="text-sm text-gray-300 leading-relaxed">{{ diagnosisData.summary }}</p>
       </div>
 
-      <!-- Pie Chart -->
-      <div class="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm flex flex-col min-h-0">
-        <div class="flex items-center justify-between mb-6">
-          <h3 class="text-sm font-bold text-gray-900 flex items-center gap-2">
-            <PieChartIcon class="w-4 h-4 text-violet-500" />
-            业务结构分析
-          </h3>
-          <button class="text-gray-400 hover:text-gray-600">
-            <MoreHorizontal class="w-4 h-4" />
-          </button>
-        </div>
-        <div ref="pieChart" class="flex-1 w-full min-h-[200px]"></div>
-      </div>
+      <!-- Dynamic Components from AI -->
+      <DiagnosisRenderer :components="diagnosisData.components || []" />
+    </template>
 
-      <!-- Bar Chart -->
-      <div class="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm flex flex-col min-h-0">
-        <div class="flex items-center justify-between mb-6">
-          <h3 class="text-sm font-bold text-gray-900 flex items-center gap-2">
-            <BarChart2 class="w-4 h-4 text-emerald-500" />
-            核心指标对标
-          </h3>
-          <button class="text-gray-400 hover:text-gray-600">
-            <MoreHorizontal class="w-4 h-4" />
-          </button>
-        </div>
-        <div ref="barChart" class="flex-1 w-full min-h-[200px]"></div>
-      </div>
-
-      <!-- Radar Chart -->
-      <div class="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm flex flex-col min-h-0">
-        <div class="flex items-center justify-between mb-6">
-          <h3 class="text-sm font-bold text-gray-900 flex items-center gap-2">
-            <Radar class="w-4 h-4 text-orange-500" />
-            综合风险评估
-          </h3>
-          <button class="text-gray-400 hover:text-gray-600">
-            <MoreHorizontal class="w-4 h-4" />
-          </button>
-        </div>
-        <div ref="radarChart" class="flex-1 w-full min-h-[200px]"></div>
-      </div>
+    <!-- Error State -->
+    <div v-if="error" class="bg-red-50 border border-red-100 rounded-2xl p-4 text-sm text-red-600">
+      {{ error }}
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import * as echarts from 'echarts'
-import { clsx } from 'clsx'
-import { twMerge } from 'tailwind-merge'
-import { 
-  BarChart3, 
-  Download, 
-  TrendingUp, 
-  TrendingDown, 
-  DollarSign, 
-  Wallet, 
-  Percent, 
-  Scale,
-  LineChart,
-  PieChart as PieChartIcon,
-  BarChart2,
-  Radar,
-  MoreHorizontal
-} from 'lucide-vue-next'
+import { ref } from 'vue'
+import { BarChart3, Search, Loader2, Sparkles } from 'lucide-vue-next'
+import DiagnosisRenderer from '../diagnosis/DiagnosisRenderer.vue'
 
-const cn = (...inputs) => twMerge(clsx(inputs))
+const companyInput = ref('')
+const diagnosisData = ref(null)
+const loading = ref(false)
+const error = ref('')
 
-const revenueChart = ref(null)
-const pieChart = ref(null)
-const barChart = ref(null)
-const radarChart = ref(null)
-
-const metrics = ref([
-  {
-    title: '总营收 (TTM)',
-    value: '¥602.3亿',
-    change: '+23.5%',
-    trend: 'up',
-    icon: DollarSign,
-    bgClass: 'bg-blue-50',
-    textClass: 'text-blue-600'
-  },
-  {
-    title: '净利润 (TTM)',
-    value: '¥166.2亿',
-    change: '+81.4%',
-    trend: 'up',
-    icon: Wallet,
-    bgClass: 'bg-emerald-50',
-    textClass: 'text-emerald-600'
-  },
-  {
-    title: '净资产收益率 (ROE)',
-    value: '27.6%',
-    change: '+5.2%',
-    trend: 'up',
-    icon: Percent,
-    bgClass: 'bg-violet-50',
-    textClass: 'text-violet-600'
-  },
-  {
-    title: '资产负债率',
-    value: '58.3%',
-    change: '-2.1%',
-    trend: 'down', // down is good for liabilities usually, but visual indicator shows direction
-    icon: Scale,
-    bgClass: 'bg-orange-50',
-    textClass: 'text-orange-600'
+const fetchDiagnosis = async () => {
+  if (!companyInput.value.trim() && !diagnosisData.value) {
+    // 如果没有输入，加载mock数据用于演示
+    loading.value = true
+    error.value = ''
+    try {
+      const res = await fetch('/api/diagnosis/mock')
+      if (!res.ok) throw new Error('请求失败')
+      diagnosisData.value = await res.json()
+    } catch (e) {
+      error.value = '加载失败: ' + e.message
+    } finally {
+      loading.value = false
+    }
+    return
   }
-])
 
-onMounted(() => {
-  initRevenueChart()
-  initPieChart()
-  initBarChart()
-  initRadarChart()
-})
-
-const initRevenueChart = () => {
-  const chart = echarts.init(revenueChart.value)
-  const option = {
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: 'rgba(255, 255, 255, 0.95)',
-      borderColor: '#f3f4f6',
-      borderWidth: 1,
-      textStyle: { color: '#1f2937', fontSize: 12 },
-      extraCssText: 'box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border-radius: 8px;'
-    },
-    legend: {
-      data: ['营收', '净利润'],
-      bottom: 0,
-      icon: 'circle',
-      textStyle: { fontSize: 12, color: '#6b7280' }
-    },
-    grid: {
-      left: '2%',
-      right: '4%',
-      bottom: '10%',
-      top: '5%',
-      containLabel: true
-    },
-    xAxis: {
-      type: 'category',
-      data: ['2019', '2020', '2021', '2022', '2023'],
-      axisLine: { lineStyle: { color: '#f3f4f6' } },
-      axisTick: { show: false },
-      axisLabel: { color: '#9ca3af', fontSize: 11, margin: 12 }
-    },
-    yAxis: {
-      type: 'value',
-      axisLine: { show: false },
-      axisTick: { show: false },
-      splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
-      axisLabel: { color: '#9ca3af', fontSize: 11 }
-    },
-    series: [
-      {
-        name: '营收',
-        type: 'line',
-        data: [277, 156, 216, 424, 602],
-        smooth: true,
-        symbol: 'none',
-        lineStyle: { width: 3, color: '#3b82f6' },
-        areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(59, 130, 246, 0.15)' },
-            { offset: 1, color: 'rgba(59, 130, 246, 0.0)' }
-          ])
-        }
-      },
-      {
-        name: '净利润',
-        type: 'line',
-        data: [16, 42, 30, 92, 166],
-        smooth: true,
-        symbol: 'none',
-        lineStyle: { width: 3, color: '#10b981' },
-        areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(16, 185, 129, 0.15)' },
-            { offset: 1, color: 'rgba(16, 185, 129, 0.0)' }
-          ])
-        }
-      }
-    ]
+  loading.value = true
+  error.value = ''
+  try {
+    const res = await fetch('/api/diagnosis/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company: companyInput.value.trim() })
+    })
+    if (!res.ok) throw new Error('请求失败')
+    diagnosisData.value = await res.json()
+  } catch (e) {
+    error.value = '分析失败: ' + e.message
+  } finally {
+    loading.value = false
   }
-  chart.setOption(option)
-  window.addEventListener('resize', () => chart.resize())
-}
-
-const initPieChart = () => {
-  const chart = echarts.init(pieChart.value)
-  const option = {
-    tooltip: {
-      trigger: 'item',
-      backgroundColor: 'rgba(255, 255, 255, 0.95)',
-      borderColor: '#f3f4f6',
-      borderWidth: 1,
-      textStyle: { color: '#1f2937', fontSize: 12 },
-      extraCssText: 'box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border-radius: 8px;'
-    },
-    legend: {
-      orient: 'vertical',
-      right: '0%',
-      top: 'center',
-      icon: 'circle',
-      textStyle: { fontSize: 12, color: '#6b7280' },
-      itemGap: 16
-    },
-    series: [
-      {
-        type: 'pie',
-        radius: ['50%', '80%'],
-        center: ['30%', '50%'],
-        avoidLabelOverlap: false,
-        itemStyle: {
-          borderRadius: 6,
-          borderColor: '#fff',
-          borderWidth: 2
-        },
-        label: { show: false },
-        emphasis: {
-          label: {
-            show: true,
-            fontSize: 16,
-            fontWeight: 'bold',
-            color: '#1f2937'
-          },
-          scale: true,
-          scaleSize: 10
-        },
-        data: [
-          { value: 335, name: '新能源汽车', itemStyle: { color: '#3b82f6' } },
-          { value: 234, name: '电池业务', itemStyle: { color: '#8b5cf6' } },
-          { value: 154, name: '电子产品', itemStyle: { color: '#10b981' } },
-          { value: 135, name: '其他业务', itemStyle: { color: '#f59e0b' } }
-        ]
-      }
-    ]
-  }
-  chart.setOption(option)
-  window.addEventListener('resize', () => chart.resize())
-}
-
-const initBarChart = () => {
-  const chart = echarts.init(barChart.value)
-  const option = {
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'shadow' },
-      backgroundColor: 'rgba(255, 255, 255, 0.95)',
-      borderColor: '#f3f4f6',
-      borderWidth: 1,
-      textStyle: { color: '#1f2937', fontSize: 12 },
-      extraCssText: 'box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border-radius: 8px;'
-    },
-    legend: {
-      data: ['比亚迪', '特斯拉', '宁德时代'],
-      bottom: 0,
-      icon: 'circle',
-      textStyle: { fontSize: 12, color: '#6b7280' }
-    },
-    grid: {
-      left: '2%',
-      right: '4%',
-      bottom: '10%',
-      top: '5%',
-      containLabel: true
-    },
-    xAxis: {
-      type: 'category',
-      data: ['ROE', '毛利率', '净利率', '资产周转率'],
-      axisLine: { lineStyle: { color: '#f3f4f6' } },
-      axisTick: { show: false },
-      axisLabel: { color: '#9ca3af', fontSize: 11, margin: 12 }
-    },
-    yAxis: {
-      type: 'value',
-      axisLine: { show: false },
-      splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
-      axisLabel: { color: '#9ca3af', fontSize: 11 }
-    },
-    series: [
-      {
-        name: '比亚迪',
-        type: 'bar',
-        barGap: '20%',
-        barWidth: 12,
-        data: [27.6, 21.9, 27.6, 1.42],
-        itemStyle: { color: '#3b82f6', borderRadius: [4, 4, 0, 0] }
-      },
-      {
-        name: '特斯拉',
-        type: 'bar',
-        barWidth: 12,
-        data: [23.1, 25.6, 15.5, 0.89],
-        itemStyle: { color: '#8b5cf6', borderRadius: [4, 4, 0, 0] }
-      },
-      {
-        name: '宁德时代',
-        type: 'bar',
-        barWidth: 12,
-        data: [19.8, 22.4, 16.8, 1.12],
-        itemStyle: { color: '#10b981', borderRadius: [4, 4, 0, 0] }
-      }
-    ]
-  }
-  chart.setOption(option)
-  window.addEventListener('resize', () => chart.resize())
-}
-
-const initRadarChart = () => {
-  const chart = echarts.init(radarChart.value)
-  const option = {
-    tooltip: {
-      backgroundColor: 'rgba(255, 255, 255, 0.95)',
-      borderColor: '#f3f4f6',
-      borderWidth: 1,
-      textStyle: { color: '#1f2937', fontSize: 12 },
-      extraCssText: 'box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); border-radius: 8px;'
-    },
-    legend: {
-      data: ['当前评分', '行业平均'],
-      bottom: 0,
-      icon: 'circle',
-      textStyle: { fontSize: 12, color: '#6b7280' }
-    },
-    radar: {
-      indicator: [
-        { name: '盈利能力', max: 100 },
-        { name: '偿债能力', max: 100 },
-        { name: '运营能力', max: 100 },
-        { name: '成长能力', max: 100 },
-        { name: '市场地位', max: 100 }
-      ],
-      radius: '65%',
-      center: ['50%', '50%'],
-      splitArea: {
-        show: true,
-        areaStyle: {
-          color: ['#f9fafb', '#ffffff']
-        }
-      },
-      axisLine: { lineStyle: { color: '#e5e7eb' } },
-      splitLine: { lineStyle: { color: '#e5e7eb' } },
-      axisName: {
-        color: '#6b7280',
-        fontSize: 11
-      }
-    },
-    series: [
-      {
-        type: 'radar',
-        data: [
-          {
-            value: [85, 72, 88, 92, 78],
-            name: '当前评分',
-            areaStyle: { color: 'rgba(59, 130, 246, 0.2)' },
-            lineStyle: { color: '#3b82f6', width: 2 },
-            itemStyle: { color: '#3b82f6' },
-            symbol: 'circle',
-            symbolSize: 6
-          },
-          {
-            value: [70, 65, 75, 68, 72],
-            name: '行业平均',
-            areaStyle: { color: 'rgba(139, 92, 246, 0.1)' },
-            lineStyle: { color: '#8b5cf6', width: 2, type: 'dashed' },
-            itemStyle: { color: '#8b5cf6' },
-            symbol: 'none'
-          }
-        ]
-      }
-    ]
-  }
-  chart.setOption(option)
-  window.addEventListener('resize', () => chart.resize())
 }
 </script>
+
+<style scoped>
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #e5e7eb;
+  border-radius: 3px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #d1d5db;
+}
+</style>

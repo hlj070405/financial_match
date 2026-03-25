@@ -8,7 +8,7 @@ DIFY_API_URL = os.getenv("DIFY_API_URL", "http://localhost/v1")
 DIFY_API_KEY = os.getenv("DIFY_API_KEY", "")
 
 # DeepSeek
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-jncmmbnconojuxhpoilrpngpyrjisczosqzmvgbcxlilftkj")
 
 # Auth
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-keep-it-secret")
