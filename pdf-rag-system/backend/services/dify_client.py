@@ -10,11 +10,18 @@ _dify_http_client = None
 
 
 async def get_dify_client():
-    """获取或创建 Dify HTTP 客户端（每次创建新实例用于流式请求，避免连接池复用导致挂起）"""
-    return httpx.AsyncClient(
-        timeout=httpx.Timeout(300.0, connect=10.0),
-        http2=False
-    )
+    """获取或创建全局 Dify HTTP 客户端（禁用 keepalive 避免 Dify 重启后连接池失效挂起）"""
+    global _dify_http_client
+    if _dify_http_client is None or _dify_http_client.is_closed:
+        _dify_http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(300.0, connect=10.0),
+            limits=httpx.Limits(
+                max_keepalive_connections=0,
+                max_connections=100,
+            ),
+            http2=False
+        )
+    return _dify_http_client
 
 
 async def reset_dify_client():
