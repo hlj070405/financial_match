@@ -7,6 +7,12 @@ const routes = [
     component: () => import('../views/Login.vue')
   },
   {
+    path: '/role-select',
+    name: 'RoleSelect',
+    component: () => import('../views/RoleSelect.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/dashboard',
     name: 'Dashboard',
     component: () => import('../views/Dashboard.vue'),
@@ -59,7 +65,12 @@ router.beforeEach(async (to, from, next) => {
       })
       
       if (response.ok) {
-        next('/dashboard')
+        const userRole = localStorage.getItem('user_role')
+        if (userRole) {
+          next('/dashboard')
+        } else {
+          next('/role-select')
+        }
         return
       } else {
         localStorage.removeItem('access_token')

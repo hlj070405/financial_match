@@ -279,7 +279,8 @@ const handleLogin = async () => {
       localStorage.setItem('remember_me', 'true')
     }
 
-    router.push('/dashboard')
+    const userRole = localStorage.getItem('user_role')
+    router.push(userRole ? '/dashboard' : '/role-select')
     
   } catch (error) {
     errorMessage.value = error.message || '登录失败，请检查网络连接'
