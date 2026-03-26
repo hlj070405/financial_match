@@ -11,11 +11,11 @@ import {
 } from 'lucide-vue-next'
 
 export const CATEGORIES = [
-  { id: 'smart', label: '智能分析' },
-  { id: 'finance', label: '金融分析' },
-  { id: 'market', label: '行情数据' },
-  { id: 'professional', label: '专业服务' },
-  { id: 'enterprise', label: '企业数据' }
+  { id: 'smart', label: '智能分析', color: 'blue' },
+  { id: 'finance', label: '金融分析', color: 'emerald' },
+  { id: 'market', label: '行情数据', color: 'amber' },
+  { id: 'professional', label: '专业服务', color: 'purple' },
+  { id: 'enterprise', label: '企业数据', color: 'orange' }
 ]
 
 export const ALL_MODULES = [

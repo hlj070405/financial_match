@@ -32,20 +32,21 @@
     <!-- Navigation -->
     <nav class="flex-1 px-3 py-2 overflow-y-auto custom-scrollbar">
       <template v-for="group in groupedMenuItems" :key="group.label">
-        <div class="px-2 pt-3 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-500 select-none flex items-center gap-1" @click="toggleGroup(group)">
-          <svg class="w-3 h-3 transition-transform duration-200" :class="{ '-rotate-90': isGroupCollapsed(group) }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-          <span>{{ group.label }}</span>
+        <div 
+          class="mx-1 mt-4 mb-1.5 px-2.5 py-[6px] rounded-lg cursor-pointer select-none flex items-center gap-2 transition-colors relative overflow-hidden"
+          :style="{ backgroundColor: groupBgColor(group), color: groupTextColor(group) }"
+          @click="toggleGroup(group)"
+        >
+          <div class="absolute left-0 top-0 bottom-0 w-[3px] rounded-r-sm" :style="{ backgroundColor: groupTextColor(group) }"></div>
+          <svg class="w-3.5 h-3.5 transition-transform duration-200" :class="{ '-rotate-90': isGroupCollapsed(group) }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
+          <span class="text-[12px] font-bold tracking-wide">{{ group.label }}</span>
         </div>
         <div v-for="item in group.items" :key="item.id" v-show="!isGroupCollapsed(group)">
           <!-- Module title row - always normal style, never black -->
           <div
-            class="w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-lg transition-all duration-200 group relative overflow-hidden cursor-pointer text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+            class="w-full flex items-center gap-2.5 ml-2 px-2.5 py-[7px] rounded-lg transition-all duration-200 group relative overflow-hidden cursor-pointer text-gray-600 hover:bg-gray-50 hover:text-gray-900"
             :class="{ 'bg-gray-50': isSidebarExpanded(item.id) || activeModule === item.id }"
           >
-            <div 
-              class="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-orange-500 rounded-r-full transition-all duration-300"
-              :class="activeModule === item.id ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-full'"
-            ></div>
             <div class="flex items-center gap-2.5 flex-1 min-w-0" @click="$emit('change-module', item.id)">
               <component 
                 :is="item.icon" 
@@ -237,6 +238,16 @@ const toggleSidebarExpand = (id) => {
 }
 const isSidebarExpanded = (id) => sidebarExpanded.value.has(id)
 
+const colorMap = {
+  blue:    { bg: '#dbeafe', text: '#1d4ed8' },
+  emerald: { bg: '#d1fae5', text: '#047857' },
+  amber:   { bg: '#fef3c7', text: '#b45309' },
+  purple:  { bg: '#ede9fe', text: '#6d28d9' },
+  orange:  { bg: '#ffedd5', text: '#c2410c' }
+}
+const groupBgColor = (group) => (colorMap[group.color] || colorMap.blue).bg
+const groupTextColor = (group) => (colorMap[group.color] || colorMap.blue).text
+
 const toggleGroup = (group) => {
   if (collapsedGroups.value.has(group.label)) {
     collapsedGroups.value.delete(group.label)
@@ -268,7 +279,7 @@ const groupedMenuItems = computed(() => {
   for (const cat of CATEGORIES) {
     const catItems = items.filter(m => m.category === cat.id)
     if (catItems.length > 0) {
-      groups.push({ label: cat.label, items: catItems })
+      groups.push({ label: cat.label, color: cat.color, items: catItems })
     }
   }
   return groups
