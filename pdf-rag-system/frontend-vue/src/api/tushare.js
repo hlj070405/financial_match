@@ -57,6 +57,90 @@ export const tushareApi = {
     request(`/cashflow/${ts_code}`, { period, limit }),
 }
 
+export const agentApi = {
+  analyze: async (stock_name, ts_code) => {
+    const res = await fetch('/api/agent/analyze', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ stock_name, ts_code })
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.json()
+  },
+
+  status: async (ts_code) => {
+    const res = await fetch(`/api/agent/status/${encodeURIComponent(ts_code)}`, {
+      headers: getHeaders()
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.json()
+  },
+
+  clearCache: async (ts_code) => {
+    const res = await fetch(`/api/agent/cache/${encodeURIComponent(ts_code)}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.json()
+  },
+
+  followup: async (stock_name, ts_code, question, context = '') => {
+    const res = await fetch('/api/agent/followup', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ stock_name, ts_code, question, context })
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.json()
+  },
+
+  analyzeStream: (stock_name, ts_code, { onPhase, onDelta, onDone, onError }) => {
+    const ctrl = new AbortController()
+    fetch('/api/agent/analyze_stream', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ stock_name, ts_code }),
+      signal: ctrl.signal,
+    }).then(async (res) => {
+      if (!res.ok) {
+        onError?.(`HTTP ${res.status}`)
+        return
+      }
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop()
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed || !trimmed.startsWith('data: ')) continue
+          const payload = trimmed.slice(6)
+          if (payload === '[DONE]') {
+            onDone?.()
+            return
+          }
+          try {
+            const evt = JSON.parse(payload)
+            if (evt.type === 'phase') onPhase?.(evt.content)
+            else if (evt.type === 'delta') onDelta?.(evt.content)
+            else if (evt.type === 'done') onDone?.()
+            else if (evt.type === 'error') onError?.(evt.content)
+          } catch {}
+        }
+      }
+      onDone?.()
+    }).catch((err) => {
+      if (err.name !== 'AbortError') onError?.(err.message)
+    })
+    return ctrl
+  }
+}
+
 export const watchlistApi = {
   list: async () => {
     const res = await fetch(WATCHLIST_URL, { headers: getHeaders() })

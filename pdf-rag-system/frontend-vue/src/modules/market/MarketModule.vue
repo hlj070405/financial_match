@@ -1,6 +1,6 @@
 <template>
 
-  <div class="h-full flex flex-col gap-5 p-2 font-sans overflow-hidden">
+  <div class="h-full flex flex-col gap-5 p-2 font-sans overflow-hidden relative">
 
     <!-- Header: 自选股 + 工具栏 -->
 
@@ -266,6 +266,16 @@
 
               </span>
 
+              <button
+                v-if="currentTsCode && !isIndex"
+                @click="startAgentAnalysis"
+                :disabled="agentLoading"
+                class="ml-3 px-3 py-1 text-[11px] font-semibold rounded-lg transition-all bg-gradient-to-r from-violet-500 to-purple-600 text-white hover:from-violet-600 hover:to-purple-700 active:scale-95 shadow-md shadow-purple-500/25 disabled:opacity-60 flex items-center gap-1.5"
+              >
+                <Sparkles class="w-3.5 h-3.5" :class="agentLoading ? 'animate-spin' : ''" />
+                Agent分析此刻行情
+              </button>
+
             </h3>
 
             <div class="flex items-center gap-2">
@@ -496,6 +506,156 @@
 
     </div>
 
+    <!-- ============ Agent Analysis Overlay ============ -->
+    <Transition name="agent-fade">
+      <div v-if="agentMode" class="absolute inset-0 z-50 bg-gray-50/95 backdrop-blur-sm flex flex-col overflow-hidden rounded-2xl">
+
+        <!-- Top Bar -->
+        <div class="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-100 shrink-0">
+          <div class="flex items-center gap-3">
+            <Sparkles class="w-5 h-5 text-purple-500" />
+            <span class="text-sm font-bold text-gray-900">Agent 智能分析</span>
+            <span class="text-xs text-gray-400 font-mono">{{ currentStockName }} {{ currentTsCode }}</span>
+            <span v-if="agentLoading" class="flex items-center gap-1.5 text-xs text-purple-500">
+              <Loader2 class="w-3.5 h-3.5 animate-spin" />
+              {{ agentPhase || 'AI 正在分析...' }}
+            </span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              v-if="agentStreamDone && !agentLoading"
+              @click="reAnalyze"
+              class="px-3 py-1.5 text-xs font-medium text-purple-600 hover:text-purple-800 bg-purple-50 hover:bg-purple-100 rounded-lg transition-all"
+            >
+              <RefreshCw class="w-3 h-3 inline mr-1" />重新分析
+            </button>
+            <button @click="closeAgentMode" class="px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all">
+              返回行情
+            </button>
+          </div>
+        </div>
+
+        <!-- Main Agent Content -->
+        <div class="flex-1 flex gap-4 p-4 min-h-0 overflow-hidden">
+
+          <!-- Left: Mini K-Line + Streaming Markdown -->
+          <div class="flex-1 flex flex-col gap-4 min-h-0">
+
+            <!-- Mini K-Line (shrunk) -->
+            <div class="bg-white border border-gray-100 rounded-xl p-3 shadow-sm shrink-0 agent-kline-enter" style="height: 180px;">
+              <div class="flex items-center gap-2 mb-1">
+                <CandlestickChart class="w-3.5 h-3.5 text-amber-500" />
+                <span class="text-xs font-bold text-gray-700">K线走势</span>
+              </div>
+              <div ref="agentKlineRef" class="w-full" style="height: 148px;"></div>
+            </div>
+
+            <!-- Streaming Markdown Content -->
+            <div class="flex-1 overflow-y-auto pr-1 custom-scrollbar">
+
+              <!-- Phase indicator -->
+              <div v-if="agentPhase && agentLoading" class="flex items-center gap-2 mb-3 px-1">
+                <Loader2 class="w-3.5 h-3.5 text-purple-500 animate-spin" />
+                <span class="text-xs text-purple-600 font-medium">{{ agentPhase }}</span>
+              </div>
+
+              <!-- Markdown rendered content -->
+              <div
+                v-if="agentStreamContent"
+                class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm agent-markdown"
+                v-html="marked(agentStreamContent)"
+              ></div>
+
+              <!-- Typing cursor -->
+              <div v-if="agentLoading && agentStreamContent" class="flex items-center gap-1.5 mt-2 px-1">
+                <span class="inline-block w-1.5 h-4 bg-purple-500 rounded-sm animate-pulse"></span>
+              </div>
+
+              <!-- Error -->
+              <div v-if="agentError" class="bg-red-50 border border-red-200 rounded-xl p-4 mt-2">
+                <p class="text-xs text-red-600">{{ agentError }}</p>
+              </div>
+
+              <!-- Loading skeleton (before any content) -->
+              <div v-if="agentLoading && !agentStreamContent && !agentError" class="space-y-3">
+                <div v-for="i in 3" :key="i" class="bg-white border border-gray-100 rounded-xl p-4 shadow-sm animate-pulse">
+                  <div class="h-3 bg-gray-200 rounded w-1/3 mb-2"></div>
+                  <div class="h-2 bg-gray-100 rounded w-full mb-1"></div>
+                  <div class="h-2 bg-gray-100 rounded w-2/3"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Panel: Follow-up options -->
+          <div class="w-72 flex flex-col gap-3 shrink-0 min-h-0">
+
+            <!-- Quick Actions -->
+            <div class="bg-white border border-gray-100 rounded-xl p-4 shadow-sm shrink-0">
+              <h4 class="text-xs font-bold text-gray-700 flex items-center gap-1.5 mb-3">
+                <Zap class="w-3.5 h-3.5 text-amber-500" />
+                深入了解
+              </h4>
+              <div class="space-y-2">
+                <button
+                  v-for="qa in quickActions"
+                  :key="qa.label"
+                  @click="askFollowup(qa.question)"
+                  :disabled="followupLoading || agentLoading"
+                  class="w-full text-left px-3 py-2.5 text-[11px] font-medium text-gray-700 bg-gray-50 hover:bg-purple-50 hover:text-purple-700 border border-gray-100 hover:border-purple-200 rounded-lg transition-all disabled:opacity-50"
+                >
+                  {{ qa.label }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Custom Question -->
+            <div class="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex-1 flex flex-col min-h-0">
+              <h4 class="text-xs font-bold text-gray-700 flex items-center gap-1.5 mb-3">
+                <MessageCircle class="w-3.5 h-3.5 text-purple-500" />
+                向AI追问
+              </h4>
+              <div class="flex-1 overflow-y-auto custom-scrollbar space-y-2 mb-3">
+                <div
+                  v-for="(msg, mi) in followupMessages"
+                  :key="mi"
+                  :class="cn(
+                    'rounded-lg p-2.5 text-[11px] leading-relaxed',
+                    msg.role === 'user' ? 'bg-purple-50 text-purple-800 ml-6' : 'bg-gray-50 text-gray-700 mr-2'
+                  )"
+                >
+                  <div v-if="msg.role === 'assistant'" class="agent-markdown" v-html="marked(msg.content)"></div>
+                  <p v-else class="whitespace-pre-wrap">{{ msg.content }}</p>
+                </div>
+                <div v-if="followupLoading" class="flex items-center gap-1.5 text-xs text-purple-400 p-2">
+                  <Loader2 class="w-3 h-3 animate-spin" />
+                  思考中...
+                </div>
+              </div>
+              <div class="flex gap-2 shrink-0">
+                <input
+                  v-model="followupInput"
+                  @keydown.enter="askFollowup(followupInput)"
+                  placeholder="输入你的问题..."
+                  :disabled="agentLoading"
+                  class="flex-1 px-3 py-2 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all disabled:opacity-50"
+                />
+                <button
+                  @click="askFollowup(followupInput)"
+                  :disabled="!followupInput.trim() || followupLoading || agentLoading"
+                  class="px-3 py-2 text-xs font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-all"
+                >
+                  发送
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </Transition>
+
   </div>
 
 </template>
@@ -534,11 +694,22 @@ import {
 
   Waves,
 
-  Star
+  Star,
+
+  Sparkles,
+
+  Newspaper,
+
+  Zap,
+
+  GitBranch,
+
+  MessageCircle
 
 } from 'lucide-vue-next'
 
-import { tushareApi, watchlistApi } from '../../api/tushare.js'
+import { tushareApi, watchlistApi, agentApi } from '../../api/tushare.js'
+import { marked } from 'marked'
 
 
 
@@ -591,6 +762,45 @@ const finLoading = ref(false)
 const klineChartRef = ref(null)
 
 const moneyflowChartRef = ref(null)
+
+const agentKlineRef = ref(null)
+
+
+
+// ============ Agent State ============
+
+const agentMode = ref(false)
+
+const agentLoading = ref(false)
+
+const agentResult = ref(null)
+
+const agentError = ref('')
+
+const agentStreamContent = ref('')
+
+const agentPhase = ref('')
+
+const agentStreamDone = ref(false)
+
+const followupInput = ref('')
+
+const followupLoading = ref(false)
+
+const followupMessages = ref([])
+
+let streamAbortCtrl = null
+
+let agentKlineChart = null
+
+const quickActions = [
+  { label: '📊 详细分析上下游产业链', question: '请详细分析这只股票的上下游产业链关系，以及对应的投资标的' },
+  { label: '📈 近期主力资金动向', question: '请搜索并分析这只股票近期的主力资金动向和机构持仓变化' },
+  { label: '🔍 同行业竞品对比', question: '请对比这只股票与同行业主要竞争对手的估值和业绩情况' },
+  { label: '⚠️ 潜在风险深度分析', question: '请深入分析这只股票当前面临的所有潜在风险因素' },
+  { label: '📰 近期重大事件梳理', question: '请搜索并梳理这只股票近一个月内的所有重大事件和公告' },
+  { label: '💡 短中长期操作建议', question: '请分别给出这只股票短期（1周）、中期（1月）、长期（3月）的操作建议' },
+]
 
 
 
@@ -1213,6 +1423,180 @@ const refreshData = async () => {
 
 
 
+// ============ Agent Analysis ============
+
+const stopStream = () => {
+  if (streamAbortCtrl) {
+    streamAbortCtrl.abort()
+    streamAbortCtrl = null
+  }
+}
+
+const startAgentAnalysis = async () => {
+  if (!currentTsCode.value || !currentStockName.value) return
+
+  // 先检查缓存
+  try {
+    const cached = await agentApi.status(currentTsCode.value)
+    if (cached.state === 'done' && cached.result) {
+      agentMode.value = true
+      agentResult.value = cached.result
+      agentStreamContent.value = cached.result.raw || ''
+      agentStreamDone.value = true
+      agentLoading.value = false
+      agentPhase.value = ''
+      followupMessages.value = []
+      followupInput.value = ''
+      await nextTick()
+      renderAgentKline()
+      return
+    }
+  } catch (e) { /* ignore, proceed with stream */ }
+
+  // 进入 agent 模式 + SSE 流式分析
+  agentMode.value = true
+  agentLoading.value = true
+  agentResult.value = null
+  agentStreamContent.value = ''
+  agentStreamDone.value = false
+  agentError.value = ''
+  agentPhase.value = ''
+  followupMessages.value = []
+  followupInput.value = ''
+
+  await nextTick()
+  renderAgentKline()
+
+  stopStream()
+  streamAbortCtrl = agentApi.analyzeStream(
+    currentStockName.value,
+    currentTsCode.value,
+    {
+      onPhase: (msg) => {
+        agentPhase.value = msg
+      },
+      onDelta: (chunk) => {
+        agentStreamContent.value += chunk
+      },
+      onDone: () => {
+        agentLoading.value = false
+        agentStreamDone.value = true
+        agentPhase.value = ''
+        streamAbortCtrl = null
+      },
+      onError: (err) => {
+        agentError.value = err
+        agentLoading.value = false
+        agentStreamDone.value = true
+        streamAbortCtrl = null
+      }
+    }
+  )
+}
+
+const closeAgentMode = () => {
+  stopStream()
+  agentMode.value = false
+  agentError.value = ''
+  agentStreamContent.value = ''
+  agentPhase.value = ''
+  if (agentKlineChart) {
+    agentKlineChart.dispose()
+    agentKlineChart = null
+  }
+}
+
+const reAnalyze = async () => {
+  if (!currentTsCode.value) return
+  stopStream()
+  try {
+    await agentApi.clearCache(currentTsCode.value)
+  } catch (e) {
+    console.error('清除缓存失败:', e)
+  }
+  agentResult.value = null
+  agentStreamContent.value = ''
+  agentStreamDone.value = false
+  agentError.value = ''
+  followupMessages.value = []
+  startAgentAnalysis()
+}
+
+const renderAgentKline = () => {
+  if (!agentKlineRef.value || klineData.value.length === 0) return
+  if (agentKlineChart) agentKlineChart.dispose()
+  agentKlineChart = echarts.init(agentKlineRef.value)
+
+  const dates = klineData.value.map(d => d.trade_date)
+  const ohlc = klineData.value.map(d => [d.open, d.close, d.low, d.high])
+
+  agentKlineChart.setOption({
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' },
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      borderColor: '#f3f4f6',
+      borderWidth: 1,
+      textStyle: { color: '#1f2937', fontSize: 10 },
+      extraCssText: 'box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-radius: 8px;'
+    },
+    grid: { left: '8%', right: '3%', top: '5%', bottom: '8%' },
+    xAxis: {
+      type: 'category', data: dates,
+      axisLine: { lineStyle: { color: '#e5e7eb' } },
+      axisTick: { show: false },
+      axisLabel: { color: '#9ca3af', fontSize: 9, interval: 'auto' }
+    },
+    yAxis: {
+      scale: true,
+      splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+      axisLine: { show: false }, axisTick: { show: false },
+      axisLabel: { color: '#9ca3af', fontSize: 9 }
+    },
+    dataZoom: [{ type: 'inside', start: 70, end: 100 }],
+    series: [{
+      type: 'candlestick', data: ohlc,
+      itemStyle: {
+        color: '#ef4444', color0: '#10b981',
+        borderColor: '#ef4444', borderColor0: '#10b981'
+      }
+    }]
+  })
+
+  window.addEventListener('resize', () => agentKlineChart?.resize())
+}
+
+const askFollowup = async (question) => {
+  if (!question || !question.trim()) return
+  const q = question.trim()
+  followupInput.value = ''
+  followupMessages.value.push({ role: 'user', content: q })
+  followupLoading.value = true
+
+  try {
+    const contextStr = agentStreamContent.value
+      ? agentStreamContent.value.slice(0, 2000)
+      : ''
+
+    const res = await agentApi.followup(
+      currentStockName.value,
+      currentTsCode.value,
+      q,
+      contextStr
+    )
+    if (res.status === 'ok') {
+      followupMessages.value.push({ role: 'assistant', content: res.answer })
+    } else {
+      followupMessages.value.push({ role: 'assistant', content: `错误: ${res.message}` })
+    }
+  } catch (e) {
+    followupMessages.value.push({ role: 'assistant', content: `请求失败: ${e.message}` })
+  } finally {
+    followupLoading.value = false
+  }
+}
+
+
 // ============ Charts ============
 
 const renderKlineChart = () => {
@@ -1639,5 +2023,119 @@ onMounted(async () => {
 
 }
 
+/* Agent overlay transitions */
+.agent-fade-enter-active {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.agent-fade-leave-active {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.agent-fade-enter-from {
+  opacity: 0;
+  transform: scale(0.97);
+}
+.agent-fade-leave-to {
+  opacity: 0;
+  transform: scale(0.97);
+}
+
+/* K-line shrink animation */
+.agent-kline-enter {
+  animation: klineShrink 0.6s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes klineShrink {
+  0% {
+    opacity: 0;
+    transform: scale(1.1) translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+</style>
+
+<style>
+/* Agent Markdown rendering styles (unscoped for v-html) */
+.agent-markdown h3 {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 16px 0 8px 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #f3f4f6;
+}
+.agent-markdown h3:first-child {
+  margin-top: 0;
+}
+.agent-markdown h4 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  margin: 12px 0 6px 0;
+}
+.agent-markdown p {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #4b5563;
+  margin: 4px 0;
+}
+.agent-markdown ul, .agent-markdown ol {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #4b5563;
+  padding-left: 18px;
+  margin: 4px 0 8px 0;
+}
+.agent-markdown li {
+  margin: 2px 0;
+}
+.agent-markdown strong {
+  color: #1f2937;
+  font-weight: 600;
+}
+.agent-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  margin: 8px 0;
+}
+.agent-markdown th {
+  background: #f9fafb;
+  padding: 6px 8px;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 2px solid #e5e7eb;
+}
+.agent-markdown td {
+  padding: 5px 8px;
+  border-bottom: 1px solid #f3f4f6;
+  color: #4b5563;
+}
+.agent-markdown tr:hover td {
+  background: #f9fafb;
+}
+.agent-markdown blockquote {
+  border-left: 3px solid #a78bfa;
+  padding-left: 12px;
+  margin: 8px 0;
+  color: #6b7280;
+  font-size: 12px;
+}
+.agent-markdown code {
+  background: #f3f4f6;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  color: #7c3aed;
+}
+.agent-markdown hr {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 12px 0;
+}
 </style>
 
