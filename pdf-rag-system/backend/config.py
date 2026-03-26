@@ -19,6 +19,9 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30 * 24 * 60  # 30 days
 TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN", "")
 TUSHARE_HTTP_PROXY = os.getenv("TUSHARE_HTTP_PROXY", "")
 
+# Kimi (Moonshot)
+KIMI_API_KEY = os.getenv("KIMI_API_KEY", "sk-4kChNkFRINxrsfyHDvUEJwvtIR9IntwowQnxT51bfDs1Ezd2")
+
 # Redis
 REDIS_HOST = os.getenv("REDIS_HOST", "127.0.0.1")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))

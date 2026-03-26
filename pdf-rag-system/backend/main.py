@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 
 from config import DIFY_API_URL, DIFY_API_KEY, FINANCIAL_REPORTS_DIR
 from database import init_db
-from routers import auth, chat, file, economic, hotspot, tushare, diagnosis, watchlist
+from routers import auth, chat, file, economic, hotspot, tushare, diagnosis, watchlist, agent
 
 app = FastAPI(title="PDF RAG Analysis System")
 
@@ -42,6 +42,7 @@ app.include_router(hotspot.router)
 app.include_router(tushare.router)
 app.include_router(diagnosis.router)
 app.include_router(watchlist.router)
+app.include_router(agent.router)
 
 
 @app.get("/health")

@@ -268,12 +268,18 @@
 
               <button
                 v-if="currentTsCode && !isIndex"
-                @click="startAgentAnalysis"
-                :disabled="agentLoading"
-                class="ml-3 px-3 py-1 text-[11px] font-semibold rounded-lg transition-all bg-gradient-to-r from-violet-500 to-purple-600 text-white hover:from-violet-600 hover:to-purple-700 active:scale-95 shadow-md shadow-purple-500/25 disabled:opacity-60 flex items-center gap-1.5"
+                @click="agentLoading ? (agentMode = true) : startAgentAnalysis()"
+                :class="[
+                  'ml-3 px-3 py-1 text-[11px] font-semibold rounded-lg transition-all active:scale-95 flex items-center gap-1.5',
+                  agentLoading
+                    ? 'bg-purple-100 border border-purple-300 text-purple-600'
+                    : agentHasCache
+                      ? 'bg-white border border-purple-300 text-purple-600 hover:bg-purple-50 shadow-sm'
+                      : 'bg-gradient-to-r from-violet-500 to-purple-600 text-white hover:from-violet-600 hover:to-purple-700 shadow-md shadow-purple-500/25'
+                ]"
               >
                 <Sparkles class="w-3.5 h-3.5" :class="agentLoading ? 'animate-spin' : ''" />
-                Agent分析此刻行情
+                {{ agentLoading ? '分析中...' : agentHasCache ? '查看分析报告' : 'Agent分析此刻行情' }}
               </button>
 
             </h3>
@@ -783,6 +789,8 @@ const agentPhase = ref('')
 
 const agentStreamDone = ref(false)
 
+const agentHasCache = ref(false)
+
 const followupInput = ref('')
 
 const followupLoading = ref(false)
@@ -1119,6 +1127,7 @@ const selectStock = (s) => {
   selectedIndex.value = ''
 
   fetchStockData()
+  checkAgentCache(s.ts_code)
 
 }
 
@@ -1137,6 +1146,8 @@ const selectIndex = (idx) => {
   searchText.value = `${idx.name} ${idx.code}`
 
   showSuggestions.value = false
+
+  agentHasCache.value = false
 
   fetchIndexKline()
 
@@ -1184,6 +1195,7 @@ const jumpToWatchlistStock = (w) => {
   isIndex.value = false
   selectedIndex.value = ''
   fetchStockData()
+  checkAgentCache(w.ts_code)
 }
 
 
@@ -1240,97 +1252,56 @@ const fetchStockData = async () => {
   if (!currentTsCode.value) return
 
   chartLoading.value = true
-
   basicLoading.value = true
-
   moneyflowLoading.value = true
-
   finLoading.value = true
 
+  const code = currentTsCode.value
+  const fetchFn = activePeriod.value === 'weekly'
+    ? tushareApi.getWeekly
+    : activePeriod.value === 'monthly'
+      ? tushareApi.getMonthly
+      : tushareApi.getDaily
 
+  // 全部并行请求
+  const [klineRes, basicRes, mfRes, bRes, cRes] = await Promise.allSettled([
+    fetchFn(code),
+    tushareApi.getDailyBasic(code),
+    tushareApi.getMoneyflow(code),
+    tushareApi.getBalancesheet(code),
+    tushareApi.getCashflow(code),
+  ])
 
-  try {
+  // K线
+  if (klineRes.status === 'fulfilled') {
+    klineData.value = klineRes.value.data || []
+  } else { console.error('K线:', klineRes.reason) }
+  chartLoading.value = false
+  await nextTick()
+  renderKlineChart()
 
-    const fetchFn = activePeriod.value === 'weekly'
-
-      ? tushareApi.getWeekly
-
-      : activePeriod.value === 'monthly'
-
-        ? tushareApi.getMonthly
-
-        : tushareApi.getDaily
-
-    const res = await fetchFn(currentTsCode.value)
-
-    klineData.value = res.data || []
-
-    chartLoading.value = false
-
-    await nextTick()
-
-    renderKlineChart()
-
-  } catch (e) {
-
-    console.error('获取行情失败:', e)
-
-    chartLoading.value = false
-
-  }
-
-
-
-  try {
-
-    const res = await tushareApi.getDailyBasic(currentTsCode.value)
-
-    dailyBasicData.value = (res.data && res.data.length > 0) ? res.data[0] : null
-
-  } catch (e) { console.error(e) }
-
+  // 每日指标
+  if (basicRes.status === 'fulfilled') {
+    const d = basicRes.value.data
+    dailyBasicData.value = (d && d.length > 0) ? d[0] : null
+  } else { console.error('指标:', basicRes.reason) }
   basicLoading.value = false
 
+  // 资金流向
+  if (mfRes.status === 'fulfilled') {
+    moneyflowData.value = mfRes.value.data || []
+  } else { console.error('资金流:', mfRes.reason) }
+  moneyflowLoading.value = false
+  await nextTick()
+  renderMoneyflowChart()
 
-
-  try {
-
-    const res = await tushareApi.getMoneyflow(currentTsCode.value)
-
-    moneyflowData.value = res.data || []
-
-    moneyflowLoading.value = false
-
-    await nextTick()
-
-    renderMoneyflowChart()
-
-  } catch (e) {
-
-    console.error(e)
-
-    moneyflowLoading.value = false
-
+  // 财务
+  if (bRes.status === 'fulfilled') {
+    balanceData.value = bRes.value.data || []
   }
-
-
-
-  try {
-
-    const [bRes, cRes] = await Promise.all([
-
-      tushareApi.getBalancesheet(currentTsCode.value),
-
-      tushareApi.getCashflow(currentTsCode.value)
-
-    ])
-
-    balanceData.value = bRes.data || []
-
-    cashflowData_raw.value = cRes.data || []
-
-  } catch (e) { console.error(e) }
-
+  if (cRes.status === 'fulfilled') {
+    cashflowData_raw.value = cRes.value.data || []
+  }
   finLoading.value = false
 
 }
@@ -1425,6 +1396,14 @@ const refreshData = async () => {
 
 // ============ Agent Analysis ============
 
+const checkAgentCache = async (tsCode) => {
+  if (!tsCode) { agentHasCache.value = false; return }
+  try {
+    const s = await agentApi.status(tsCode)
+    agentHasCache.value = s.state === 'done'
+  } catch { agentHasCache.value = false }
+}
+
 const stopStream = () => {
   if (streamAbortCtrl) {
     streamAbortCtrl.abort()
@@ -1481,6 +1460,7 @@ const startAgentAnalysis = async () => {
       onDone: () => {
         agentLoading.value = false
         agentStreamDone.value = true
+        agentHasCache.value = true
         agentPhase.value = ''
         streamAbortCtrl = null
       },
@@ -1514,6 +1494,7 @@ const reAnalyze = async () => {
   } catch (e) {
     console.error('清除缓存失败:', e)
   }
+  agentHasCache.value = false
   agentResult.value = null
   agentStreamContent.value = ''
   agentStreamDone.value = false
@@ -1988,6 +1969,7 @@ onMounted(async () => {
   isIndex.value = false
 
   fetchStockData()
+  checkAgentCache('000001.SZ')
 
 })
 

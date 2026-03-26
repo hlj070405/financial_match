@@ -328,19 +328,21 @@ def stream_analyze(stock_name: str, ts_code: str):
         yield "data: [DONE]\n\n"
         return
 
-    # 完成
+    # 写入缓存（必须在 yield done 之前，否则客户端断开后 generator 可能不再执行）
     print(f"[Agent-Stream] 流式分析完成, {len(full_content)} chars")
-    yield f"data: {json.dumps({'type': 'done', 'content': ''}, ensure_ascii=False)}\n\n"
-    yield "data: [DONE]\n\n"
-
-    # 写入缓存（Markdown 原文）
     r = _get_redis()
     if r:
         result = {"status": "ok", "data": None, "raw": full_content}
         try:
             r.setex(_result_key(ts_code), _RESULT_TTL, json.dumps(result, ensure_ascii=False))
+            r.set(_status_key(ts_code), "done", ex=_RESULT_TTL)
+            print(f"[Agent-Stream] 缓存已写入, TTL={_RESULT_TTL}s")
         except Exception:
-            pass
+            traceback.print_exc()
+
+    # 完成信号
+    yield f"data: {json.dumps({'type': 'done', 'content': ''}, ensure_ascii=False)}\n\n"
+    yield "data: [DONE]\n\n"
 
 
 # ---------- JSON 解析 ----------

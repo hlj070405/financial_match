@@ -12,8 +12,8 @@ from config import REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_PASSWORD
 TTL_STOCK_BASIC = 86400       # 股票列表 24h
 TTL_TRADE_CAL = 86400         # 交易日历 24h
 TTL_FINANCIAL = 21600         # 财务数据(资产负债表/现金流) 6h
-TTL_KLINE_HIST = 3600         # K线(日/周/月) 1h
-TTL_REALTIME = 60             # 实时类(指数行情/每日指标/资金流向) 60s
+TTL_KLINE_HIST = 600          # K线(日/周/月) 10min
+TTL_REALTIME = 600            # 实时类(指数行情/每日指标/资金流向) 10min
 TTL_INDEX_BASIC = 86400       # 指数基本信息 24h
 
 _PREFIX = "tushare:"
