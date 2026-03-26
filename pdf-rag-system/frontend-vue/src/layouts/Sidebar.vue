@@ -32,8 +32,11 @@
     <!-- Navigation -->
     <nav class="flex-1 px-3 py-2 overflow-y-auto custom-scrollbar">
       <template v-for="group in groupedMenuItems" :key="group.label">
-        <div class="px-2 pt-3 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{{ group.label }}</div>
-        <div v-for="item in group.items" :key="item.id">
+        <div class="px-2 pt-3 pb-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-500 select-none flex items-center gap-1" @click="toggleGroup(group)">
+          <svg class="w-3 h-3 transition-transform duration-200" :class="{ '-rotate-90': isGroupCollapsed(group) }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+          <span>{{ group.label }}</span>
+        </div>
+        <div v-for="item in group.items" :key="item.id" v-show="!isGroupCollapsed(group)">
           <!-- Module title row - always normal style, never black -->
           <div
             class="w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-lg transition-all duration-200 group relative overflow-hidden cursor-pointer text-gray-600 hover:bg-gray-50 hover:text-gray-900"
@@ -190,7 +193,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import { 
@@ -204,6 +207,7 @@ import { CATEGORIES, ROLES, getUserRole, getActiveModuleDefinitions } from '../c
 const cn = (...inputs) => twMerge(clsx(inputs))
 const showUserMenu = ref(false)
 const sidebarExpanded = ref(new Set())
+const collapsedGroups = ref(new Set())
 const activeFeatureId = ref(null)
 
 const props = defineProps({
@@ -233,6 +237,15 @@ const toggleSidebarExpand = (id) => {
 }
 const isSidebarExpanded = (id) => sidebarExpanded.value.has(id)
 
+const toggleGroup = (group) => {
+  if (collapsedGroups.value.has(group.label)) {
+    collapsedGroups.value.delete(group.label)
+  } else {
+    collapsedGroups.value.add(group.label)
+  }
+}
+const isGroupCollapsed = (group) => collapsedGroups.value.has(group.label)
+
 const isFeatureAvailableForRole = (feat) => {
   const roleId = getUserRole()
   if (!roleId) return true
@@ -242,6 +255,12 @@ const isFeatureAvailableForRole = (feat) => {
 const visibleMenuItems = computed(() => {
   return props.menuItems.length > 0 ? props.menuItems : getActiveModuleDefinitions()
 })
+
+watch(visibleMenuItems, (items) => {
+  if (sidebarExpanded.value.size === 0 && items.length > 0) {
+    items.forEach(m => sidebarExpanded.value.add(m.id))
+  }
+}, { immediate: true })
 
 const groupedMenuItems = computed(() => {
   const items = visibleMenuItems.value
