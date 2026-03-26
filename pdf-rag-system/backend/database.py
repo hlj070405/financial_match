@@ -91,6 +91,21 @@ class ChatHistory(Base):
     created_at = Column(DateTime, default=datetime.utcnow, comment="创建时间")
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")
 
+# 定义自选股模型
+class Watchlist(Base):
+    __tablename__ = "watchlist"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, nullable=False, comment="用户ID")
+    ts_code = Column(String(20), nullable=False, comment="股票代码(如000001.SZ)")
+    name = Column(String(50), nullable=False, comment="股票名称")
+    sort_order = Column(Integer, default=0, comment="排序序号")
+    created_at = Column(DateTime, default=datetime.utcnow, comment="创建时间")
+
+    __table_args__ = (
+        UniqueConstraint('user_id', 'ts_code', name='uq_watchlist_user_ts_code'),
+    )
+
 # 定义热点新闻模型
 class HotspotNews(Base):
     __tablename__ = "hotspot_news"

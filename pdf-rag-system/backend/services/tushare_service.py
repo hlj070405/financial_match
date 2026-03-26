@@ -12,6 +12,11 @@ from typing import Optional, Dict, List
 from datetime import datetime, timedelta
 
 from config import TUSHARE_TOKEN, TUSHARE_HTTP_PROXY
+from services.redis_cache import (
+    cache_get, cache_set, make_key,
+    TTL_STOCK_BASIC, TTL_TRADE_CAL, TTL_FINANCIAL,
+    TTL_KLINE_HIST, TTL_REALTIME, TTL_INDEX_BASIC,
+)
 
 
 def _sanitize_records(records: List[Dict]) -> List[Dict]:
@@ -73,6 +78,10 @@ class TushareService:
         :param exchange: 交易所 SSE上交所 SZSE深交所，空=全部
         :param list_status: 上市状态 L上市 D退市 P暂停
         """
+        key = make_key("stock_basic", exchange, list_status)
+        cached = cache_get(key)
+        if cached is not None:
+            return cached
         try:
             pro = cls._get_pro()
             df = pro.stock_basic(
@@ -80,7 +89,9 @@ class TushareService:
                 list_status=list_status,
                 fields="ts_code,symbol,name,area,industry,market,list_date"
             )
-            return _df_to_records(df)
+            result = _df_to_records(df)
+            cache_set(key, result, TTL_STOCK_BASIC)
+            return result
         except Exception as e:
             return [{"error": f"获取股票基本信息失败: {str(e)}"}]
 
@@ -89,19 +100,25 @@ class TushareService:
         """
         获取交易日历
         """
+        if not end_date:
+            end_date = datetime.now().strftime("%Y%m%d")
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")
+        key = make_key("trade_cal", exchange, start_date, end_date)
+        cached = cache_get(key)
+        if cached is not None:
+            return cached
         try:
             pro = cls._get_pro()
-            if not end_date:
-                end_date = datetime.now().strftime("%Y%m%d")
-            if not start_date:
-                start_date = (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")
             df = pro.trade_cal(
                 exchange=exchange,
                 start_date=start_date,
                 end_date=end_date,
                 fields="exchange,cal_date,is_open,pretrade_date"
             )
-            return _df_to_records(df)
+            result = _df_to_records(df)
+            cache_set(key, result, TTL_TRADE_CAL)
+            return result
         except Exception as e:
             return [{"error": f"获取交易日历失败: {str(e)}"}]
 
@@ -115,12 +132,16 @@ class TushareService:
         :param start_date: 开始日期 YYYYMMDD
         :param end_date: 结束日期 YYYYMMDD
         """
+        if not end_date:
+            end_date = datetime.now().strftime("%Y%m%d")
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=90)).strftime("%Y%m%d")
+        key = make_key("daily", ts_code, start_date, end_date)
+        cached = cache_get(key)
+        if cached is not None:
+            return cached
         try:
             pro = cls._get_pro()
-            if not end_date:
-                end_date = datetime.now().strftime("%Y%m%d")
-            if not start_date:
-                start_date = (datetime.now() - timedelta(days=90)).strftime("%Y%m%d")
             df = pro.daily(
                 ts_code=ts_code,
                 start_date=start_date,
@@ -128,7 +149,9 @@ class TushareService:
             )
             if df is not None and not df.empty:
                 df = df.sort_values("trade_date")
-            return _df_to_records(df)
+            result = _df_to_records(df)
+            cache_set(key, result, TTL_KLINE_HIST)
+            return result
         except Exception as e:
             return [{"error": f"获取日线行情失败: {str(e)}"}]
 
@@ -139,6 +162,10 @@ class TushareService:
         :param ts_code: 股票代码
         :param trade_date: 交易日期 YYYYMMDD
         """
+        key = make_key("daily_basic", ts_code, trade_date)
+        cached = cache_get(key)
+        if cached is not None:
+            return cached
         try:
             pro = cls._get_pro()
             params = {}
@@ -154,39 +181,53 @@ class TushareService:
             )
             if ts_code and not trade_date and df is not None and not df.empty:
                 df = df.sort_values("trade_date", ascending=False).head(1)
-            return _df_to_records(df)
+            result = _df_to_records(df)
+            cache_set(key, result, TTL_REALTIME)
+            return result
         except Exception as e:
             return [{"error": f"获取每日指标失败: {str(e)}"}]
 
     @classmethod
     def get_weekly(cls, ts_code: str, start_date: str = None, end_date: str = None) -> List[Dict]:
         """获取周线行情"""
+        if not end_date:
+            end_date = datetime.now().strftime("%Y%m%d")
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
+        key = make_key("weekly", ts_code, start_date, end_date)
+        cached = cache_get(key)
+        if cached is not None:
+            return cached
         try:
             pro = cls._get_pro()
-            if not end_date:
-                end_date = datetime.now().strftime("%Y%m%d")
-            if not start_date:
-                start_date = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
             df = pro.weekly(ts_code=ts_code, start_date=start_date, end_date=end_date)
             if df is not None and not df.empty:
                 df = df.sort_values("trade_date")
-            return _df_to_records(df)
+            result = _df_to_records(df)
+            cache_set(key, result, TTL_KLINE_HIST)
+            return result
         except Exception as e:
             return [{"error": f"获取周线行情失败: {str(e)}"}]
 
     @classmethod
     def get_monthly(cls, ts_code: str, start_date: str = None, end_date: str = None) -> List[Dict]:
         """获取月线行情"""
+        if not end_date:
+            end_date = datetime.now().strftime("%Y%m%d")
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=365 * 3)).strftime("%Y%m%d")
+        key = make_key("monthly", ts_code, start_date, end_date)
+        cached = cache_get(key)
+        if cached is not None:
+            return cached
         try:
             pro = cls._get_pro()
-            if not end_date:
-                end_date = datetime.now().strftime("%Y%m%d")
-            if not start_date:
-                start_date = (datetime.now() - timedelta(days=365 * 3)).strftime("%Y%m%d")
             df = pro.monthly(ts_code=ts_code, start_date=start_date, end_date=end_date)
             if df is not None and not df.empty:
                 df = df.sort_values("trade_date")
-            return _df_to_records(df)
+            result = _df_to_records(df)
+            cache_set(key, result, TTL_KLINE_HIST)
+            return result
         except Exception as e:
             return [{"error": f"获取月线行情失败: {str(e)}"}]
 
@@ -198,6 +239,10 @@ class TushareService:
         获取指数基本信息
         :param market: 市场代码 MSCI/CSI/SSE/SZSE/CICC/SW/OTH
         """
+        key = make_key("index_basic", market, limit)
+        cached = cache_get(key)
+        if cached is not None:
+            return cached
         try:
             pro = cls._get_pro()
             params = {"limit": limit}
@@ -207,7 +252,9 @@ class TushareService:
                 **params,
                 fields="ts_code,name,market,publisher,category,base_date,base_point,list_date"
             )
-            return _df_to_records(df)
+            result = _df_to_records(df)
+            cache_set(key, result, TTL_INDEX_BASIC)
+            return result
         except Exception as e:
             return [{"error": f"获取指数基本信息失败: {str(e)}"}]
 
@@ -217,16 +264,22 @@ class TushareService:
         获取指数日线行情
         :param ts_code: 指数代码，如 000001.SH(上证综指)
         """
+        if not end_date:
+            end_date = datetime.now().strftime("%Y%m%d")
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=90)).strftime("%Y%m%d")
+        key = make_key("index_daily", ts_code, start_date, end_date)
+        cached = cache_get(key)
+        if cached is not None:
+            return cached
         try:
             pro = cls._get_pro()
-            if not end_date:
-                end_date = datetime.now().strftime("%Y%m%d")
-            if not start_date:
-                start_date = (datetime.now() - timedelta(days=90)).strftime("%Y%m%d")
             df = pro.index_daily(ts_code=ts_code, start_date=start_date, end_date=end_date)
             if df is not None and not df.empty:
                 df = df.sort_values("trade_date")
-            return _df_to_records(df)
+            result = _df_to_records(df)
+            cache_set(key, result, TTL_REALTIME)
+            return result
         except Exception as e:
             return [{"error": f"获取指数日线失败: {str(e)}"}]
 
@@ -238,16 +291,22 @@ class TushareService:
         获取个股资金流向
         :param ts_code: 股票代码
         """
+        if not end_date:
+            end_date = datetime.now().strftime("%Y%m%d")
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")
+        key = make_key("moneyflow", ts_code, start_date, end_date)
+        cached = cache_get(key)
+        if cached is not None:
+            return cached
         try:
             pro = cls._get_pro()
-            if not end_date:
-                end_date = datetime.now().strftime("%Y%m%d")
-            if not start_date:
-                start_date = (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")
             df = pro.moneyflow(ts_code=ts_code, start_date=start_date, end_date=end_date)
             if df is not None and not df.empty:
                 df = df.sort_values("trade_date")
-            return _df_to_records(df)
+            result = _df_to_records(df)
+            cache_set(key, result, TTL_REALTIME)
+            return result
         except Exception as e:
             return [{"error": f"获取资金流向失败: {str(e)}"}]
 
@@ -258,13 +317,19 @@ class TushareService:
         """
         获取资产负债表
         """
+        key = make_key("balancesheet", ts_code, period, limit)
+        cached = cache_get(key)
+        if cached is not None:
+            return cached
         try:
             pro = cls._get_pro()
             params = {"ts_code": ts_code, "limit": limit}
             if period:
                 params["period"] = period
             df = pro.balancesheet(**params)
-            return _df_to_records(df)
+            result = _df_to_records(df)
+            cache_set(key, result, TTL_FINANCIAL)
+            return result
         except Exception as e:
             return [{"error": f"获取资产负债表失败: {str(e)}"}]
 
@@ -273,13 +338,19 @@ class TushareService:
         """
         获取现金流量表
         """
+        key = make_key("cashflow", ts_code, period, limit)
+        cached = cache_get(key)
+        if cached is not None:
+            return cached
         try:
             pro = cls._get_pro()
             params = {"ts_code": ts_code, "limit": limit}
             if period:
                 params["period"] = period
             df = pro.cashflow(**params)
-            return _df_to_records(df)
+            result = _df_to_records(df)
+            cache_set(key, result, TTL_FINANCIAL)
+            return result
         except Exception as e:
             return [{"error": f"获取现金流量表失败: {str(e)}"}]
 

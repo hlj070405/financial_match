@@ -1944,6 +1944,14 @@ const handleSend = async () => {
 
                 targetMessages[messageIndex].elapsedTime = finishData.elapsed_time
 
+                targetMessages[messageIndex].isLoading = false
+
+              }
+
+              if (messages.value === targetMessages) {
+
+                isLoading.value = false
+
               }
 
               

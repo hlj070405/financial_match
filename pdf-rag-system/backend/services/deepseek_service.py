@@ -34,7 +34,7 @@ class DeepSeekService:
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "deepseek-ai/DeepSeek-V3",
+                        "model": "Qwen/Qwen2.5-72B-Instruct",
                         "messages": [
                             {
                                 "role": "system",
@@ -92,7 +92,7 @@ class DeepSeekService:
                             "Content-Type": "application/json"
                         },
                         json={
-                            "model": "deepseek-ai/DeepSeek-V3",
+                            "model": "Qwen/Qwen2.5-72B-Instruct",
                             "messages": [
                                 {
                                     "role": "user",

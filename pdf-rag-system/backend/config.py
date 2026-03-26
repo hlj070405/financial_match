@@ -19,5 +19,11 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30 * 24 * 60  # 30 days
 TUSHARE_TOKEN = os.getenv("TUSHARE_TOKEN", "")
 TUSHARE_HTTP_PROXY = os.getenv("TUSHARE_HTTP_PROXY", "")
 
+# Redis
+REDIS_HOST = os.getenv("REDIS_HOST", "127.0.0.1")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+REDIS_DB = int(os.getenv("REDIS_DB", "0"))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", "")
+
 # Paths
 FINANCIAL_REPORTS_DIR = "./financial_reports"

@@ -429,7 +429,10 @@ async def chat_with_ai(
                                     if financial_reports_future:
                                         print(f"[异步财报] 检查下载任务状态...")
                                         try:
-                                            result = await financial_reports_future
+                                            result = await asyncio.wait_for(financial_reports_future, timeout=60)
+                                            print(f"[异步财报] 预处理返回: need_report={result.get('need_report')}, reports数量={len(result.get('reports', []))}")
+                                            for i, rpt in enumerate(result.get('reports', [])):
+                                                print(f"[异步财报] report[{i}]: status={rpt.get('status')}, company={rpt.get('company')}, path={rpt.get('pdf_path')}, error={rpt.get('error')}")
                                             
                                             if result.get("need_report", False):
                                                 financial_reports = result.get("reports", [])
@@ -560,7 +563,9 @@ async def chat_with_ai(
             async for chunk in generate_stream(db):
                 await stream_session.publish_chunk(chunk)
         except Exception as producer_error:
+            import traceback
             print(f"[stream producer] 异常: {producer_error}")
+            traceback.print_exc()
             await stream_session.publish_chunk(
                 f"data: {json.dumps({'type': 'error', 'error': str(producer_error)})}\n\n"
             )

@@ -1,4 +1,5 @@
 const BASE_URL = '/api/tushare'
+const WATCHLIST_URL = '/api/watchlist'
 
 function getHeaders() {
   const token = localStorage.getItem('access_token')
@@ -54,4 +55,34 @@ export const tushareApi = {
 
   getCashflow: (ts_code, period = '', limit = 4) =>
     request(`/cashflow/${ts_code}`, { period, limit }),
+}
+
+export const watchlistApi = {
+  list: async () => {
+    const res = await fetch(WATCHLIST_URL, { headers: getHeaders() })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.json()
+  },
+
+  add: async (ts_code, name) => {
+    const res = await fetch(WATCHLIST_URL, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ ts_code, name })
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.detail || `HTTP ${res.status}`)
+    }
+    return res.json()
+  },
+
+  remove: async (ts_code) => {
+    const res = await fetch(`${WATCHLIST_URL}/${encodeURIComponent(ts_code)}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return res.json()
+  }
 }
