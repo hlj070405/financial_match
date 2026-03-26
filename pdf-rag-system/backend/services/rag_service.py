@@ -313,8 +313,7 @@ async def ingest_pdf(pdf_path: str, user_id: int, document_id: int = None) -> Di
     """
     full_path = pdf_path
     if not os.path.isabs(full_path):
-        from services.dify_client import resolve_pdf_full_path
-        full_path = resolve_pdf_full_path(pdf_path)
+        full_path = os.path.join(os.getcwd(), full_path)
 
     if not os.path.exists(full_path):
         return {"status": "error", "message": f"文件不存在: {full_path}"}

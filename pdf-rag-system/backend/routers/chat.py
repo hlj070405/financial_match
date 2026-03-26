@@ -32,8 +32,6 @@ from auth import get_current_user
 
 from services.stream import StreamHub
 
-from services.dify_client import resolve_pdf_full_path
-
 from services.deepseek_service import DeepSeekService
 
 from services.chat_history_service import ChatHistoryService
