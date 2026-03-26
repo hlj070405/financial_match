@@ -52,6 +52,7 @@ const chatModuleDef = ALL_MODULES.find(m => m.id === 'chat')
 const features = chatModuleDef?.features || []
 
 const featureComponentMap = {
+  'chat_main': ChatModule,
   'chat_clarify': ClarifyPage,
   'chat_profile': ProfilePage,
   'chat_progressive': ProgressivePage,
@@ -59,7 +60,7 @@ const featureComponentMap = {
   'chat_direct': DirectPage
 }
 
-const currentFeature = ref(props.activeFeature || 'chat_clarify')
+const currentFeature = ref(props.activeFeature || 'chat_main')
 const transitionName = ref('page-slide-right')
 let prevIndex = 0
 

@@ -38,6 +38,12 @@
 
             @analyze-files="analyzeWithFiles"
 
+            @refresh="loadWorkspaceDocuments"
+
+            @direct-analyze="handleDirectAnalyze"
+
+            @analyze-existing="handleAnalyzeExisting"
+
           />
 
           
@@ -215,6 +221,26 @@
                   <div v-else class="prose prose-sm max-w-none prose-p:text-gray-600 prose-headings:text-gray-900 prose-strong:text-gray-900 prose-code:text-violet-600 prose-pre:bg-gray-900 prose-pre:border-gray-800" v-html="formatMessage(message.content)"></div>
 
 
+
+                  <!-- 结构化交互卡片: 需求澄清 / 选项 / 建议 / 确认 -->
+                  <div v-if="message.interaction && message.interaction.items && message.interaction.items.length > 0" class="mt-4 pt-4 border-t border-gray-100">
+                    <div class="flex items-center gap-2 mb-2.5">
+                      <div class="w-5 h-5 rounded-md flex items-center justify-center"
+                        :class="message.interaction.type === 'clarify' ? 'bg-amber-100 text-amber-600' : message.interaction.type === 'options' ? 'bg-blue-100 text-blue-600' : message.interaction.type === 'suggest' ? 'bg-emerald-100 text-emerald-600' : 'bg-violet-100 text-violet-600'">
+                        <component :is="message.interaction.type === 'clarify' ? HelpCircle : message.interaction.type === 'options' ? ListChecks : message.interaction.type === 'suggest' ? Lightbulb : CheckCircle2" class="w-3 h-3" />
+                      </div>
+                      <span class="text-xs font-bold text-gray-700">{{ message.interaction.title || (message.interaction.type === 'clarify' ? '请选择您的意图' : message.interaction.type === 'options' ? '分析方向' : message.interaction.type === 'suggest' ? '您可能还想了解' : '请确认') }}</span>
+                    </div>
+                    <div class="grid gap-2" :class="message.interaction.items.length <= 2 ? 'grid-cols-2' : 'grid-cols-1'">
+                      <button v-for="(item, idx) in message.interaction.items" :key="idx"
+                        @click="sendMessage(item.value || item.label)"
+                        class="text-left px-3.5 py-2.5 rounded-xl border transition-all group hover:shadow-sm"
+                        :class="message.interaction.type === 'clarify' ? 'border-amber-200 bg-amber-50/50 hover:bg-amber-50 hover:border-amber-300' : message.interaction.type === 'options' ? 'border-blue-200 bg-blue-50/50 hover:bg-blue-50 hover:border-blue-300' : message.interaction.type === 'suggest' ? 'border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50 hover:border-emerald-300' : 'border-violet-200 bg-violet-50/50 hover:bg-violet-50 hover:border-violet-300'">
+                        <span class="text-xs font-medium text-gray-800 group-hover:text-gray-900">{{ item.label }}</span>
+                        <p v-if="item.desc" class="text-[10px] text-gray-400 mt-0.5 leading-relaxed">{{ item.desc }}</p>
+                      </button>
+                    </div>
+                  </div>
 
                   <!-- Thinking Process -->
 
@@ -736,7 +762,15 @@ import {
 
   Pencil,
 
-  Trash2
+  Trash2,
+
+  HelpCircle,
+
+  ListChecks,
+
+  Lightbulb,
+
+  CheckCircle2
 
 } from 'lucide-vue-next'
 
@@ -846,7 +880,7 @@ const currentConversationFiles = computed(() => {
 
 const exampleQuestions = [
 
-  '分析比亚迪2023年财务状况',
+  '分析比亚迪2026年财务状况',
 
   '对比宁德时代和比亚迪',
 
@@ -1374,7 +1408,12 @@ const formatMessage = (content) => {
 
   try {
 
-    return marked.parse(content)
+    // 移除末尾的 interaction JSON 块（LLM 结构化交互输出）
+    let cleaned = content.replace(/```json\s*\{[\s\S]*?"interaction"[\s\S]*?\}\s*```\s*$/, '').trim()
+    // 也处理没有代码块包裹的裸 JSON（如截图中的情况）
+    cleaned = cleaned.replace(/\{"interaction"\s*:\s*\{[\s\S]*?\}\s*\}\s*$/, '').trim()
+
+    return marked.parse(cleaned)
 
   } catch (error) {
 
@@ -1750,7 +1789,9 @@ const handleSend = async () => {
 
       message: question,
 
-      style: analysisStyle.value
+      style: analysisStyle.value,
+
+      user_role: localStorage.getItem('user_role') || null
 
     }
 
@@ -1932,6 +1973,16 @@ const handleSend = async () => {
 
                 }
 
+              }
+
+            } else if (parsed.type === 'interaction') {
+
+              // 结构化交互事件：需求澄清、选项卡片、后续建议等
+              if (targetMessages[messageIndex] && parsed.interaction) {
+                targetMessages[messageIndex].interaction = parsed.interaction
+                if (messages.value === targetMessages && isUserAtBottom()) {
+                  scrollToBottom()
+                }
               }
 
             } else if (parsed.type === 'finish') {
@@ -2346,6 +2397,155 @@ const analyzeWithFiles = (files) => {
 
   handleSend()
 
+}
+
+
+// 对已有文档直接 OCR 分析（不入向量库）
+const handleAnalyzeExisting = async (doc) => {
+  if (!doc?.id) return
+
+  messages.value.push({
+    role: 'user',
+    content: `📄 直接分析文档: ${doc.title || doc.name || '未知文档'}`
+  })
+
+  const assistantMsg = { role: 'assistant', content: '', isLoading: true, sources: [] }
+  messages.value.push(assistantMsg)
+  const msgIdx = messages.value.length - 1
+  isLoading.value = true
+  scrollToBottom()
+
+  try {
+    const token = localStorage.getItem('access_token')
+    const response = await fetch('/api/rag/analyze-by-id', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ document_id: doc.id })
+    })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const dataStr = line.slice(6).trim()
+        if (dataStr === '[DONE]') continue
+        try {
+          const parsed = JSON.parse(dataStr)
+          if (parsed.type === 'text') {
+            messages.value[msgIdx].isLoading = false
+            messages.value[msgIdx].content += parsed.text
+            if (isUserAtBottom()) scrollToBottom()
+          } else if (parsed.type === 'phase') {
+            messages.value[msgIdx].isLoading = true
+            messages.value[msgIdx].content = parsed.content + '\n\n'
+          } else if (parsed.type === 'finish') {
+            messages.value[msgIdx].isLoading = false
+          } else if (parsed.type === 'error') {
+            messages.value[msgIdx].isLoading = false
+            messages.value[msgIdx].content += `\n\n❌ ${parsed.error}`
+          }
+        } catch (e) { /* skip */ }
+      }
+    }
+  } catch (err) {
+    messages.value[msgIdx].isLoading = false
+    messages.value[msgIdx].content = `分析失败: ${err.message}`
+  } finally {
+    isLoading.value = false
+    scrollToBottom()
+  }
+}
+
+// 直接分析模式：上传 PDF → OCR → LLM 流式分析（不入向量库）
+const handleDirectAnalyze = async (file) => {
+  if (!file) return
+
+  // 添加用户消息
+  messages.value.push({
+    role: 'user',
+    content: `📄 直接分析文件: ${file.name}`
+  })
+
+  // 添加 AI 占位消息
+  const assistantMsg = {
+    role: 'assistant',
+    content: '',
+    isLoading: true,
+    sources: []
+  }
+  messages.value.push(assistantMsg)
+  const msgIdx = messages.value.length - 1
+  isLoading.value = true
+  scrollToBottom()
+
+  try {
+    const token = localStorage.getItem('access_token')
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('question', '请分析这份文档的核心内容、关键数据和重要结论')
+    formData.append('save_to_db', 'true')
+
+    const response = await fetch('/api/rag/analyze-direct', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData
+    })
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const dataStr = line.slice(6).trim()
+        if (dataStr === '[DONE]') continue
+        try {
+          const parsed = JSON.parse(dataStr)
+          if (parsed.type === 'text') {
+            messages.value[msgIdx].isLoading = false
+            messages.value[msgIdx].content += parsed.text
+            if (isUserAtBottom()) scrollToBottom()
+          } else if (parsed.type === 'phase') {
+            messages.value[msgIdx].isLoading = true
+            messages.value[msgIdx].content = parsed.content + '\n\n'
+          } else if (parsed.type === 'finish') {
+            messages.value[msgIdx].isLoading = false
+          } else if (parsed.type === 'error') {
+            messages.value[msgIdx].isLoading = false
+            messages.value[msgIdx].content += `\n\n❌ ${parsed.error}`
+          } else if (parsed.type === 'meta' && parsed.document_id) {
+            // 文档已保存，刷新工作台
+            await loadWorkspaceDocuments()
+          }
+        } catch (e) { /* skip */ }
+      }
+    }
+  } catch (err) {
+    messages.value[msgIdx].isLoading = false
+    messages.value[msgIdx].content = `分析失败: ${err.message}`
+  } finally {
+    isLoading.value = false
+    scrollToBottom()
+  }
 }
 
 

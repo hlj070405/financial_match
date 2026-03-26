@@ -123,6 +123,43 @@ async def upload_file(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/documents")
+async def list_user_documents(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """获取当前用户的所有文档（含向量化状态）"""
+    from services.rag_service import list_indexed_documents
+
+    docs = db.query(Document).filter(
+        Document.user_id == current_user.id
+    ).order_by(Document.created_at.desc()).all()
+
+    # 获取已向量化的文档源名列表
+    indexed = list_indexed_documents(current_user.id)
+    indexed_sources = {item["source"] for item in indexed} if indexed else set()
+    indexed_counts = {item["source"]: item["count"] for item in indexed} if indexed else {}
+
+    documents = []
+    for d in docs:
+        pdf_name = os.path.basename(d.pdf_path) if d.pdf_path else ""
+        is_indexed = pdf_name in indexed_sources
+        documents.append({
+            "id": d.id,
+            "title": d.title or pdf_name,
+            "company": d.company,
+            "stock_code": d.stock_code,
+            "year": d.year,
+            "source": d.source,
+            "pdf_path": d.pdf_path,
+            "indexed": is_indexed,
+            "chunks": indexed_counts.get(pdf_name, 0),
+            "created_at": d.created_at.isoformat() if d.created_at else None
+        })
+
+    return {"documents": documents, "count": len(documents)}
+
+
 class UploadLocalPdfRequest(BaseModel):
     pdf_path: str
     company: Optional[str] = None

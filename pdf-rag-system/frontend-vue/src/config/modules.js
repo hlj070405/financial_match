@@ -25,6 +25,7 @@ export const ALL_MODULES = [
     icon: MessageSquare,
     category: 'smart',
     features: [
+      { id: 'chat_main', name: '幻思对话', desc: 'RAG 智能对话，基于知识库的深度问答与分析', roles: ['personal_general', 'personal_wealthy', 'personal_professional', 'enterprise_small', 'enterprise_large'], targetLabel: '所有用户' },
       { id: 'chat_clarify', name: '多轮需求澄清', desc: '通过多次问询逐步明确用户真实意图', roles: ['personal_general', 'personal_wealthy', 'enterprise_small', 'enterprise_large'], targetLabel: '大众用户 / 高净值用户 / 企业用户' },
       { id: 'chat_profile', name: '用户画像分析', desc: '智能分析用户投资偏好与风险承受能力', roles: ['personal_general', 'personal_wealthy', 'enterprise_large'], targetLabel: '大众用户 / 高净值用户 / 大型企业' },
       { id: 'chat_progressive', name: '渐进式引导分析', desc: '多源数据渐进式分析，让普通人也能获得专业级服务', roles: ['personal_general', 'personal_wealthy', 'enterprise_small', 'enterprise_large'], targetLabel: '大众用户 / 高净值用户 / 企业用户' },

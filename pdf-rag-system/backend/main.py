@@ -3,9 +3,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from config import DIFY_API_URL, DIFY_API_KEY, FINANCIAL_REPORTS_DIR
+from config import FINANCIAL_REPORTS_DIR
 from database import init_db
-from routers import auth, chat, file, economic, hotspot, tushare, diagnosis, watchlist, agent
+from routers import auth, chat, file, economic, hotspot, tushare, diagnosis, watchlist, agent, rag
 
 app = FastAPI(title="PDF RAG Analysis System")
 
@@ -43,6 +43,7 @@ app.include_router(tushare.router)
 app.include_router(diagnosis.router)
 app.include_router(watchlist.router)
 app.include_router(agent.router)
+app.include_router(rag.router)
 
 
 @app.get("/health")
@@ -50,8 +51,8 @@ async def health_check():
     return {"status": "healthy"}
 
 
-print(f"[启动] DIFY_API_URL: {DIFY_API_URL}")
-print(f"[启动] DIFY_API_KEY: {DIFY_API_KEY[:20]}..." if DIFY_API_KEY else "[启动] DIFY_API_KEY: 未设置")
+print(f"[启动] RAG引擎: LangChain + ChromaDB (本地向量库)")
+print(f"[启动] Embedding: BAAI/bge-large-zh-v1.5 via SiliconFlow")
 print(f"[启动] 财报PDF目录已挂载: {FINANCIAL_REPORTS_DIR}")
 
 

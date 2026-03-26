@@ -188,7 +188,7 @@ const generateReport = async () => {
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: prompt, style: '研报生成' })
+      body: JSON.stringify({ message: prompt, style: '研报生成', user_role: localStorage.getItem('user_role') || null })
     })
 
     const reader = resp.body.getReader()

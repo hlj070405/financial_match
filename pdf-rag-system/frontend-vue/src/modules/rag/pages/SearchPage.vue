@@ -187,38 +187,50 @@ const toggleFilter = (v) => {
 
 const selectResult = (r) => { selectedResult.value = r }
 
-const mockResults = (q) => [
-  { title: `${q}相关分析报告 - 2023年年报摘要`, source: '比亚迪2023年年报.pdf', page: 45, score: 96, type: 'PDF文档',
-    highlight: `...公司整体<b class="text-blue-700">${q}</b>表现优于行业平均水平，报告期内实现营业收入6023.15亿元，同比增长42.04%，<b class="text-blue-700">毛利率</b>达到20.31%...`,
-    fullText: '报告期内，公司积极应对市场变化，通过技术创新和成本控制，实现了营业收入和利润的双增长。公司整体毛利率达到20.31%，较上年同期提升1.5个百分点。' },
-  { title: `行业对比 - ${q}横向分析`, source: '新能源汽车行业研究.pdf', page: 12, score: 89, type: 'PDF文档',
-    highlight: `...在<b class="text-blue-700">${q}</b>方面，行业龙头企业间差异显著。其中比亚迪和特斯拉分别以20.3%和18.2%的<b class="text-blue-700">毛利率</b>领先行业...`,
-    fullText: '新能源汽车行业整体毛利率呈现分化趋势，龙头企业凭借规模效应和垂直整合优势保持较高毛利率水平。' },
-  { title: `财务指标追踪 - 季度数据`, source: '财务数据汇总.xlsx', page: 1, score: 82, type: 'Excel表格',
-    highlight: `...Q1-Q4 <b class="text-blue-700">毛利率</b>分别为19.8%、20.1%、20.5%、20.8%，呈现逐季改善趋势...`,
-    fullText: '从季度数据来看，公司毛利率持续改善，主要得益于产品结构优化和高端车型占比提升。' },
-  { title: `供应链成本分析`, source: '供应链成本报告.pdf', page: 28, score: 75, type: 'PDF文档',
-    highlight: `...原材料价格下行带动成本端改善，碳酸锂价格从高点回落超70%，对<b class="text-blue-700">${q}</b>提升形成有力支撑...`,
-    fullText: '碳酸锂价格大幅回落是电池成本下降的核心驱动力，预计将持续改善整车企业的毛利率表现。' },
-  { title: `研究员笔记 - 盈利能力展望`, source: '内部研究笔记.docx', page: 3, score: 68, type: 'Word文档',
-    highlight: `...预计2024年公司<b class="text-blue-700">毛利率</b>有望进一步提升至21-22%区间，主要驱动力来自高端化和出海...`,
-    fullText: '综合考虑产品结构升级、成本端改善和海外市场拓展，我们预计公司2024年毛利率将进一步提升。' }
-]
+const highlightText = (text, q) => {
+  if (!text || !q) return text || ''
+  const snippet = text.length > 200 ? '...' + text.slice(0, 200) + '...' : text
+  const words = q.split(/\s+/).filter(Boolean)
+  let html = snippet
+  for (const w of words) {
+    html = html.replace(new RegExp(w, 'gi'), `<b class="text-blue-700">${w}</b>`)
+  }
+  return html
+}
 
 const doSearch = async () => {
   if (!query.value.trim() || searching.value) return
   searching.value = true
   hasSearched.value = true
   selectedResult.value = null
-  const start = Date.now()
   try {
-    await new Promise(r => setTimeout(r, 800))
-    results.value = mockResults(query.value.trim())
-    searchTime.value = Date.now() - start
+    const token = localStorage.getItem('access_token')
+    const resp = await fetch('/api/rag/search', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: query.value.trim(), top_k: topK.value })
+    })
+    const data = await resp.json()
+    searchTime.value = data.elapsed_ms || 0
+    const minScore = threshold.value / 100
+    results.value = (data.results || [])
+      .filter(r => r.score >= minScore)
+      .map(r => ({
+        title: `${r.source} · 第${r.page_number}页`,
+        source: r.source,
+        page: r.page_number,
+        score: Math.round(r.score * 100),
+        type: 'PDF文档',
+        highlight: highlightText(r.text, query.value.trim()),
+        fullText: r.text
+      }))
     if (!searchHistory.value.includes(query.value.trim())) {
       searchHistory.value.unshift(query.value.trim())
       if (searchHistory.value.length > 5) searchHistory.value.pop()
     }
+  } catch (e) {
+    console.error('搜索失败', e)
+    results.value = []
   } finally { searching.value = false }
 }
 </script>

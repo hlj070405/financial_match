@@ -126,7 +126,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { Upload, FileUp, FolderOpen, X, Eye, Trash2, FileText, FileSpreadsheet, File } from 'lucide-vue-next'
 
 const dragOver = ref(false)
@@ -141,18 +141,25 @@ const fileIconBg = (type) => type === 'pdf' ? 'bg-rose-50' : ['xlsx', 'xls', 'cs
 const fileIconColor = (type) => type === 'pdf' ? 'text-rose-500' : ['xlsx', 'xls', 'csv'].includes(type) ? 'text-emerald-500' : 'text-blue-500'
 const statusLabel = (s) => ({ uploading: '上传中', parsing: '解析中', done: '已完成', error: '失败', pending: '等待中' })[s] || s
 
-const uploadQueue = ref([
-  { name: '比亚迪2023年年报.pdf', type: 'pdf', size: '12.3MB', progress: 100, status: 'done' },
-  { name: '行业对比数据.xlsx', type: 'xlsx', size: '2.1MB', progress: 65, status: 'parsing' }
-])
+const uploadQueue = ref([])
+const recentFiles = ref([])
 
-const recentFiles = ref([
-  { name: '贵州茅台2023年年报.pdf', type: 'pdf', size: '15.2MB', vectors: 342, date: '2024-03-14' },
-  { name: '招商银行2023年报.pdf', type: 'pdf', size: '18.7MB', vectors: 456, date: '2024-03-13' },
-  { name: '新能源行业数据汇总.xlsx', type: 'xlsx', size: '3.4MB', vectors: 128, date: '2024-03-12' },
-  { name: '宏观经济月度指标.csv', type: 'csv', size: '0.8MB', vectors: 45, date: '2024-03-11' },
-  { name: '投资研究笔记合集.docx', type: 'docx', size: '5.6MB', vectors: 215, date: '2024-03-10' }
-])
+const loadIndexed = async () => {
+  try {
+    const token = localStorage.getItem('access_token')
+    const resp = await fetch('/api/rag/indexed', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const data = await resp.json()
+    recentFiles.value = (data.sources || []).map(s => ({
+      name: s.source || s,
+      type: (s.source || s).split('.').pop().toLowerCase() || 'pdf',
+      size: '-',
+      vectors: s.count || '-',
+      date: '-'
+    }))
+  } catch (e) { console.error('加载已入库文件失败', e) }
+}
 
 const onDrop = (e) => {
   dragOver.value = false
@@ -160,21 +167,53 @@ const onDrop = (e) => {
   if (files?.length) addFile(files[0])
 }
 const onFileSelect = (e) => { if (e.target.files?.length) addFile(e.target.files[0]) }
-const addFile = (file) => {
+const addFile = async (file) => {
   const ext = file.name.split('.').pop().toLowerCase()
-  uploadQueue.value.push({
-    name: file.name, type: ext, size: (file.size / 1024 / 1024).toFixed(1) + 'MB', progress: 0, status: 'uploading'
-  })
-  simulateUpload(uploadQueue.value.length - 1)
+  const item = {
+    name: file.name, type: ext,
+    size: (file.size / 1024 / 1024).toFixed(1) + 'MB',
+    progress: 10, status: 'uploading'
+  }
+  uploadQueue.value.push(item)
+  const idx = uploadQueue.value.length - 1
+
+  try {
+    item.progress = 30
+    const token = localStorage.getItem('access_token')
+    const formData = new FormData()
+    formData.append('file', file)
+
+    item.status = 'uploading'
+    item.progress = 50
+    const resp = await fetch('/api/rag/ingest/upload', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData
+    })
+
+    item.progress = 80
+    item.status = 'parsing'
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}))
+      throw new Error(err.detail || '上传失败')
+    }
+
+    const result = await resp.json()
+    item.progress = 100
+    item.status = 'done'
+    console.log('入库结果:', result)
+    await loadIndexed()
+  } catch (e) {
+    console.error('上传失败:', e)
+    if (uploadQueue.value[idx]) {
+      uploadQueue.value[idx].status = 'error'
+      uploadQueue.value[idx].progress = 100
+    }
+  }
 }
-const simulateUpload = (idx) => {
-  const interval = setInterval(() => {
-    if (!uploadQueue.value[idx]) { clearInterval(interval); return }
-    uploadQueue.value[idx].progress += 10
-    if (uploadQueue.value[idx].progress >= 70) uploadQueue.value[idx].status = 'parsing'
-    if (uploadQueue.value[idx].progress >= 100) { uploadQueue.value[idx].status = 'done'; clearInterval(interval) }
-  }, 300)
-}
+
+onMounted(() => { loadIndexed() })
 </script>
 
 <style scoped>

@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 
 
-from config import DIFY_API_URL, DIFY_API_KEY, FINANCIAL_REPORTS_DIR
+from config import FINANCIAL_REPORTS_DIR
 
 from database import get_db, User, Document, SessionLocal
 
@@ -32,13 +32,15 @@ from auth import get_current_user
 
 from services.stream import StreamHub
 
-from services.dify_client import get_dify_client, resolve_pdf_full_path, upload_pdf_path_to_dify
+from services.dify_client import resolve_pdf_full_path
 
 from services.deepseek_service import DeepSeekService
 
 from services.chat_history_service import ChatHistoryService
 
 from services.chat_preprocessor import ChatPreprocessor
+
+from services.rag_service import rag_chat_stream, ingest_pdf
 
 
 
@@ -71,6 +73,8 @@ class ChatRequest(BaseModel):
     workspace_document_ids: Optional[List[int]] = None
 
     style: Optional[str] = "专业分析"
+
+    user_role: Optional[str] = None
 
     save_history: Optional[bool] = True
 
@@ -123,243 +127,66 @@ class SaveChatRequest(BaseModel):
 
 
 @router.post("/analyze")
-
-async def analyze_document(request: AnalysisRequest):
-
-    """调用 Dify 工作流分析文档 - 流式响应"""
-
-    import re
-
-    import httpx
-
-    
+async def analyze_document(
+    request: AnalysisRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """RAG 文档分析 - 流式响应"""
 
     async def generate_stream():
-
         try:
-
             print(f"[分析请求] file_id: {request.file_id}, question: {request.question[:50]}..., style: {request.style}")
-
-            
-
-            async with httpx.AsyncClient(timeout=300.0) as client:
-
-                headers = {
-
-                    'Authorization': f'Bearer {DIFY_API_KEY}',
-
-                    'Content-Type': 'application/json'
-
-                }
-
-                
-
-                file_input = {
-
-                    "transfer_method": "local_file",
-
-                    "upload_file_id": request.file_id,
-
-                    "type": "document"
-
-                }
-
-                
-
-                payload = {
-
-                    "inputs": {
-
-                        "prompt": request.question,
-
-                        "file": file_input,
-
-                        "system": request.style
-
-                    },
-
-                    "response_mode": "streaming",
-
-                    "user": "default-user"
-
-                }
-
-                
-
-                print(f"[调用 Dify] URL: {DIFY_API_URL}/workflows/run")
-
-                
-
-                async with client.stream(
-
-                    'POST',
-
-                    f"{DIFY_API_URL}/workflows/run",
-
-                    headers=headers,
-
-                    json=payload
-
-                ) as response:
-
-                    
-
-                    if response.status_code != 200:
-
-                        error_msg = f"分析失败 (状态码: {response.status_code})"
-
-                        print(f"ERROR: {error_msg}")
-
-                        yield f"data: {{\"error\": \"{error_msg}\"}}\n\n"
-
-                        return
-
-                    
-
-                    print(f"[Dify 响应] Status: {response.status_code} - 开始流式接收")
-
-                    
-
-                    full_text = ""
-
-                    in_thinking = False
-
-                    
-
-                    async for line in response.aiter_lines():
-
-                        if not line or line.startswith(':'):
-
-                            continue
-
-                        
-
-                        if line.startswith('data: '):
-
-                            data_str = line[6:]
-
-                            
-
-                            try:
-
-                                data = json.loads(data_str)
-
-                                event = data.get('event')
-
-                                
-
-                                if event == 'workflow_started':
-
-                                    print(f"[工作流启动] run_id: {data.get('workflow_run_id')}")
-
-                                    yield f"data: {{\"type\": \"start\"}}\n\n"
-
-                                
-
-                                elif event == 'node_started':
-
-                                    node_type = data.get('data', {}).get('node_type')
-
-                                    print(f"[节点启动] {node_type}")
-
-                                
-
-                                elif event == 'text_chunk' or event == 'agent_thought':
-
-                                    text = data.get('data', {}).get('text', '')
-
-                                    
-
-                                    if text:
-
-                                        full_text += text
-
-                                        
-
-                                        if '<thinking>' in text:
-
-                                            in_thinking = True
-
-                                        if '</thinking>' in text:
-
-                                            in_thinking = False
-
-                                            continue
-
-                                        
-
-                                        if not in_thinking and '<thinking>' not in text:
-
-                                            clean_text = re.sub(r'</?thinking>', '', text)
-
-                                            if clean_text.strip():
-
-                                                escaped_text = json.dumps(clean_text)[1:-1]
-
-                                                yield f"data: {{\"type\": \"text\", \"content\": \"{escaped_text}\"}}\n\n"
-
-                                
-
-                                elif event == 'workflow_finished':
-
-                                    clean_full_text = re.sub(r'<thinking>.*?</thinking>', '', full_text, flags=re.DOTALL)
-
-                                    clean_full_text = clean_full_text.strip()
-
-                                    
-
-                                    print(f"[分析完成] 原始长度: {len(full_text)}, 清理后: {len(clean_full_text)}")
-
-                                    yield f"data: {{\"type\": \"done\", \"total_length\": {len(clean_full_text)}}}\n\n"
-
-                                
-
-                                elif event == 'error':
-
-                                    error_msg = data.get('data', {}).get('message', '未知错误')
-
-                                    print(f"ERROR: {error_msg}")
-
-                                    yield f"data: {{\"type\": \"error\", \"message\": \"{error_msg}\"}}\n\n"
-
-                            
-
-                            except json.JSONDecodeError:
-
-                                continue
-
-        
+            yield f"data: {{\"type\": \"start\"}}\n\n"
+
+            # file_id 在新架构中对应 document_id
+            doc_id = None
+            try:
+                doc_id = int(request.file_id)
+            except (ValueError, TypeError):
+                pass
+
+            async for sse_chunk in rag_chat_stream(
+                query=request.question,
+                user_id=current_user.id,
+                top_k=6,
+                document_ids=[doc_id] if doc_id else None,
+                style=request.style or "专业分析",
+                user_role=getattr(request, 'user_role', None)
+            ):
+                if sse_chunk.startswith("data: "):
+                    data_str = sse_chunk[6:].strip()
+                    if data_str == "[DONE]":
+                        continue
+                    try:
+                        evt = json.loads(data_str)
+                        evt_type = evt.get("type", "")
+                        if evt_type == "text":
+                            text = evt.get("text", "")
+                            escaped = json.dumps(text)[1:-1]
+                            yield f"data: {{\"type\": \"text\", \"content\": \"{escaped}\"}}\n\n"
+                        elif evt_type == "finish":
+                            total = evt.get("data", {}).get("total_length", 0)
+                            yield f"data: {{\"type\": \"done\", \"total_length\": {total}}}\n\n"
+                        elif evt_type == "error":
+                            yield sse_chunk
+                    except json.JSONDecodeError:
+                        continue
 
         except Exception as e:
-
             error_msg = str(e)
-
             print(f"ERROR: 流式处理异常: {error_msg}")
-
             import traceback
-
             traceback.print_exc()
-
             yield f"data: {{\"type\": \"error\", \"message\": \"{error_msg}\"}}\n\n"
 
-    
-
     return StreamingResponse(
-
         generate_stream(),
-
         media_type="text/event-stream",
-
         headers={
-
             "Cache-Control": "no-cache",
-
             "Connection": "keep-alive",
-
             "X-Accel-Buffering": "no"
-
         }
-
     )
 
 
@@ -432,669 +259,238 @@ async def chat_with_ai(
 
 
 
-            effective_files = []
-
-            if request.files and len(request.files) > 0:
-
-                effective_files.extend(request.files)
-
-
+            # 收集工作区文档ID（用于RAG检索限定范围）
+            rag_document_ids = []
 
             if request.workspace_document_ids and len(request.workspace_document_ids) > 0:
-
-                workspace_ids = []
-
                 for raw_id in request.workspace_document_ids:
-
                     try:
-
-                        workspace_ids.append(int(raw_id))
-
+                        rag_document_ids.append(int(raw_id))
                     except (TypeError, ValueError):
-
                         continue
+                rag_document_ids = list(dict.fromkeys(rag_document_ids))
+                print(f"[RAG] 限定检索文档: {rag_document_ids}")
 
-                workspace_ids = list(dict.fromkeys(workspace_ids))
-
-
-
-                if workspace_ids:
-
-                    docs = db.query(Document).filter(
-
-                        Document.user_id == current_user.id,
-
-                        Document.id.in_(workspace_ids)
-
-                    ).all()
-
-                    print(f"[工作区文件] 请求 {len(workspace_ids)} 个，命中 {len(docs)} 个")
-
-
-
-                    for doc in docs:
-
-                        try:
-
-                            full_path = resolve_pdf_full_path(doc.pdf_path)
-
-                            upload_result = await upload_pdf_path_to_dify(full_path, current_user.id)
-
-                            effective_files.append({
-
-                                "type": "document",
-
-                                "transfer_method": "local_file",
-
-                                "upload_file_id": upload_result["file_id"],
-
-                                "name": upload_result.get("name") or doc.title or os.path.basename(full_path),
-
-                                "document_id": doc.id
-
-                            })
-
-                            print(f"[工作区文件] 已加入语料: doc_id={doc.id}, file_id={upload_result['file_id']}")
-
-                        except Exception as doc_upload_error:
-
-                            print(f"[工作区文件] 上传失败 doc_id={doc.id}: {doc_upload_error}")
-
-            
-
-            # 【并行任务】启动异步财报下载任务（不阻塞Dify响应）
-
+            # 【并行任务】启动异步财报下载任务（不阻塞RAG响应）
             financial_reports_future = None
 
-            
-
-            if len(effective_files) > 0:
-
-                print(f"[跳过财报下载] 用户已提供 {len(effective_files)} 个文件，无需下载")
-
+            if rag_document_ids:
+                print(f"[跳过财报下载] 用户已指定 {len(rag_document_ids)} 个文档")
             else:
-
                 print(f"[并行任务] 启动AI预处理判断...")
 
-                
-
                 async def download_reports_async():
-
                     try:
-
                         result = await chat_preprocessor.preprocess(
-
                             user_message=request.message,
-
                             is_first_message=is_new_conversation
-
                         )
 
-                        
-
                         if result.get("need_financial_report", False):
-
                             print(f"[AI判断] 需要财报，准备下载")
-
                             return {
-
                                 "need_report": True,
-
                                 "reports": result.get("financial_reports", [])
-
                             }
-
                         else:
-
                             print(f"[AI判断] 不需要财报")
-
                             return {"need_report": False, "reports": []}
 
-                            
-
                     except Exception as e:
-
                         print(f"[异步财报] AI判断或下载失败: {e}")
-
                         import traceback
-
                         traceback.print_exc()
-
                         return {"need_report": False, "reports": []}
-
-                
 
                 financial_reports_future = asyncio.create_task(download_reports_async())
 
-            
-
-            # 如果是新会话，创建占位记录（fire-and-forget，不阻塞Dify请求）
-
+            # 如果是新会话，创建占位记录（fire-and-forget）
             generated_title = None
-
             if is_new_conversation and request.save_history:
-
                 async def _create_placeholder():
-
                     try:
-
                         await chat_history_service.create_placeholder_chat(
-
                             db=db,
-
                             user_id=current_user.id,
-
                             conversation_id=conversation_id,
-
                             message=request.message
-
                         )
-
                     except Exception as placeholder_error:
-
                         print(f"[占位记录] 创建失败但不影响响应: {str(placeholder_error)}")
-
                 asyncio.create_task(_create_placeholder())
 
-            
-
-            # 获取全局 Dify HTTP 客户端
-
-            client = await get_dify_client()
-
-            headers = {
-
-                'Authorization': f'Bearer {DIFY_API_KEY}',
-
-                'Content-Type': 'application/json'
-
-            }
-
-            
-
-            payload = {
-
-                "inputs": {
-
-                    "prompt": request.message,
-
-                    "system": request.style or "专业分析"
-
-                },
-
-                "response_mode": "streaming",
-
-                "user": current_user.username
-
-            }
-
-            
-
-            if len(effective_files) > 0:
-
-                file_objs = []
-
-                for file in effective_files:
-
-                    file_id = file.get("upload_file_id") or file.get("file_id") or file.get("id")
-
-                    if not file_id:
-
-                        continue
-
-                    file_objs.append({
-
-                        "type": file.get("type", "document"),
-
-                        "transfer_method": file.get("transfer_method", "local_file"),
-
-                        "upload_file_id": file_id
-
-                    })
-
-                if file_objs:
-
-                    payload["inputs"]["file"] = file_objs[0]
-
-                    print(f"添加文件到请求: {file_objs[0]}")
-
-                else:
-
-                    print("警告: 附带文件中未解析出有效file_id")
-
-            
-
-            print(f"[{time.time():.3f}] 发送请求到 Dify: {DIFY_API_URL}/workflows/run")
-
-            print(f"Payload: {json.dumps(payload, ensure_ascii=False, indent=2)}")
-
-            
-
+            # ==================== LangChain RAG 流式对话 ====================
+            print(f"[{time.time():.3f}] 开始 RAG 流式对话...")
             request_start = time.time()
 
-            async with client.stream(
-
-                'POST',
-
-                f"{DIFY_API_URL}/workflows/run",
-
-                headers=headers,
-
-                json=payload
-
-            ) as response:
-
-                connection_time = time.time() - request_start
-
-                print(f"[{time.time():.3f}] 收到 Dify 响应状态码: {response.status_code} (连接耗时: {connection_time:.2f}秒)")
-
-                
-
-                if response.status_code != 200:
-
-                    error_detail = await response.aread()
-
-                    error_msg = f'Dify工作流执行失败: {error_detail.decode()}'
-
-                    print(f"错误: {error_msg}")
-
-                    yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
-
-                    return
-
-                
-
-                has_streamed_text = False
-
-                first_event_received = False
-
-                
-
-                print(f"[{time.time():.3f}] 开始读取 Dify 流式响应...")
-
-                async for line in response.aiter_lines():
-
-                    if line.startswith('data: '):
-
-                        data_str = line[6:]
-
-                        
-
-                        if data_str.strip():
-
-                            try:
-
-                                data = json.loads(data_str)
-
-                                event = data.get('event')
-
-                                
-
-                                if not first_event_received:
-
-                                    first_event_time = time.time() - request_start
-
-                                    print(f"[{time.time():.3f}] 收到首个事件: {event} (Dify处理耗时: {first_event_time:.2f}秒)")
-
-                                    first_event_received = True
-
-                                else:
-
-                                    print(f"[{time.time():.3f}] 收到事件: {event}")
-
-                                
-
-                                if event == 'workflow_started':
-
-                                    print("工作流已启动")
-
-                                    yield f"data: {json.dumps({'type': 'start', 'data': data})}\n\n"
-
-                                
-
-                                elif event == 'node_started':
-
-                                    node_title = data.get('data', {}).get('title', 'unknown')
-
-                                    print(f"节点启动: {node_title}")
-
-                                    yield f"data: {json.dumps({'type': 'node_start', 'data': data})}\n\n"
-
-                                
-
-                                elif event == 'node_finished':
-
-                                    node_title = data.get('data', {}).get('title', 'unknown')
-
-                                    print(f"节点完成: {node_title}")
-
-                                    yield f"data: {json.dumps({'type': 'node_finish', 'data': data})}\n\n"
-
-                                
-
-                                elif event == 'text_chunk':
-
-                                    text = data.get('data', {}).get('text', '')
-
-                                    if text:
-
-                                        has_streamed_text = True
-
-                                        full_response += text
-
-                                        print(f"文本块: {text[:20]}..." if len(text) > 20 else f"文本块: {text}")
-
-                                        yield f"data: {json.dumps({'type': 'text', 'text': text})}\n\n"
-
-                                
-
-                                elif event == 'workflow_finished':
-
-                                    print("工作流完成")
-
-                                    if not has_streamed_text:
-
-                                        print("未收到流式文本块,尝试从outputs提取完整文本")
-
-                                        outputs = data.get('data', {}).get('outputs', {})
-
-                                        if outputs and 'text' in outputs:
-
-                                            text = outputs['text']
-
-                                            if text:
-
-                                                full_response = text
-
-                                                print(f"从outputs提取到文本,长度: {len(text)}")
-
-                                                yield f"data: {json.dumps({'type': 'text', 'text': text})}\n\n"
-
-                                    else:
-
-                                        print(f"已流式输出文本")
-
-                                    
-
-                                    # 自动保存聊天历史
-
-                                    if request.save_history and full_response:
-
-                                        try:
-
-                                            print(f"[自动保存] 开始保存会话历史...")
-
-                                            await chat_history_service.save_or_update_chat(
-
-                                                db=db,
-
+            async for sse_chunk in rag_chat_stream(
+                query=request.message,
+                user_id=current_user.id,
+                top_k=6,
+                document_ids=rag_document_ids or None,
+                style=request.style or "专业分析",
+                user_role=request.user_role
+            ):
+                # rag_chat_stream yield 的格式: "data: {json}\n\n"
+                # 解析内部事件类型，转发给前端
+                if sse_chunk.startswith("data: "):
+                    data_str = sse_chunk[6:].strip()
+                    if data_str == "[DONE]":
+                        pass  # 最终 [DONE] 在下方统一发送
+                    else:
+                        try:
+                            evt = json.loads(data_str)
+                            evt_type = evt.get("type", "")
+
+                            if evt_type == "text":
+                                full_response += evt.get("text", "")
+
+                            # 直接转发所有 RAG 事件给前端
+                            yield sse_chunk
+
+                        except json.JSONDecodeError:
+                            yield sse_chunk
+
+            rag_time = time.time() - request_start
+            print(f"[{time.time():.3f}] RAG 对话完成 (耗时: {rag_time:.2f}秒, 响应长度: {len(full_response)})")
+
+            # 自动保存聊天历史
+            if request.save_history and full_response:
+                try:
+                    print(f"[自动保存] 开始保存会话历史...")
+                    await chat_history_service.save_or_update_chat(
+                        db=db,
+                        user_id=current_user.id,
+                        conversation_id=conversation_id,
+                        message=request.message,
+                        response=full_response,
+                        is_first_message=is_new_conversation
+                    )
+                    print(f"[自动保存] 会话历史保存成功: {conversation_id}")
+                except Exception as save_error:
+                    print(f"[自动保存] 保存失败但不影响响应: {str(save_error)}")
+
+            # 【检查异步财报下载结果】
+            if financial_reports_future:
+                print(f"[异步财报] 检查下载任务状态...")
+                try:
+                    result = await financial_reports_future
+
+                    if result.get("need_report", False):
+                        financial_reports = result.get("reports", [])
+
+                        if financial_reports:
+                            for report in financial_reports:
+                                if report.get('status') == 'success':
+                                    # upsert documents
+                                    try:
+                                        existing_doc = db.query(Document).filter(
+                                            Document.user_id == current_user.id,
+                                            Document.pdf_path == report['pdf_path']
+                                        ).first()
+
+                                        if existing_doc:
+                                            doc = existing_doc
+                                            doc.company = report.get('company')
+                                            doc.stock_code = report.get('stock_code')
+                                            doc.year = report.get('year')
+                                            if not doc.title and report.get('company') and report.get('year'):
+                                                doc.title = f"{report.get('company')} {report.get('year')}年财报"
+                                        else:
+                                            doc = Document(
                                                 user_id=current_user.id,
-
-                                                conversation_id=conversation_id,
-
-                                                message=request.message,
-
-                                                response=full_response,
-
-                                                is_first_message=is_new_conversation
-
+                                                source='cninfo',
+                                                title=f"{report.get('company')} {report.get('year')}年财报" if report.get('company') and report.get('year') else None,
+                                                company=report.get('company'),
+                                                stock_code=report.get('stock_code'),
+                                                year=report.get('year'),
+                                                pdf_path=report['pdf_path']
                                             )
+                                            db.add(doc)
+                                        db.commit()
+                                        db.refresh(doc)
+                                        document_ids_to_persist.append(doc.id)
 
-                                            print(f"[自动保存] 会话历史保存成功: {conversation_id}")
-
-                                        except Exception as save_error:
-
-                                            print(f"[自动保存] 保存失败但不影响响应: {str(save_error)}")
-
-                                    
-
-                                    yield f"data: {json.dumps({'type': 'finish', 'data': data})}\n\n"
-
-                                    
-
-                                    # 【检查异步财报下载结果】
-
-                                    if financial_reports_future:
-
-                                        print(f"[异步财报] 检查下载任务状态...")
-
+                                        # 自动向量化入库
                                         try:
-
-                                            result = await financial_reports_future
-
-                                            
-
-                                            if result.get("need_report", False):
-
-                                                financial_reports = result.get("reports", [])
-
-                                                
-
-                                                if financial_reports:
-
-                                                    for report in financial_reports:
-
-                                                        if report.get('status') == 'success':
-
-                                                            # upsert documents
-
-                                                            try:
-
-                                                                existing_doc = db.query(Document).filter(
-
-                                                                    Document.user_id == current_user.id,
-
-                                                                    Document.pdf_path == report['pdf_path']
-
-                                                                ).first()
-
-
-
-                                                                if existing_doc:
-
-                                                                    doc = existing_doc
-
-                                                                    doc.company = report.get('company')
-
-                                                                    doc.stock_code = report.get('stock_code')
-
-                                                                    doc.year = report.get('year')
-
-                                                                    if not doc.title and report.get('company') and report.get('year'):
-
-                                                                        doc.title = f"{report.get('company')} {report.get('year')}年财报"
-
-                                                                else:
-
-                                                                    doc = Document(
-
-                                                                        user_id=current_user.id,
-
-                                                                        source='cninfo',
-
-                                                                        title=f"{report.get('company')} {report.get('year')}年财报" if report.get('company') and report.get('year') else None,
-
-                                                                        company=report.get('company'),
-
-                                                                        stock_code=report.get('stock_code'),
-
-                                                                        year=report.get('year'),
-
-                                                                        pdf_path=report['pdf_path']
-
-                                                                    )
-
-                                                                    db.add(doc)
-
-                                                                db.commit()
-
-                                                                db.refresh(doc)
-
-                                                                document_ids_to_persist.append(doc.id)
-
-                                                            except Exception as doc_error:
-
-                                                                print(f"[documents] upsert失败但不影响响应: {doc_error}")
-
-                                                                db.rollback()
-
-
-
-                                                            report_info = {
-
-                                                                'type': 'report_ready',
-
-                                                                'document_id': document_ids_to_persist[-1] if document_ids_to_persist else None,
-
-                                                                'company': report['company'],
-
-                                                                'year': report['year'],
-
-                                                                'stock_code': report.get('stock_code'),
-
-                                                                'pdf_path': report['pdf_path'],
-
-                                                                'message': f"已获取{report['company']}{report['year']}年财报，可用于下一步深度分析"
-
-                                                            }
-
-                                                            reports_to_persist.append(report_info)
-
-                                                            yield f"data: {json.dumps(report_info)}\n\n"
-
-                                                            print(f"[异步财报] ✅ {report['company']} {report['year']}年财报已就绪")
-
-                                                            print(f"[异步财报] PDF路径: {report['pdf_path']}")
-
-                                                        elif report.get('status') == 'failed':
-
-                                                            stock_code = report.get('stock_code', '')
-
-                                                            is_us_stock = stock_code and stock_code.isalpha()
-
-                                                            
-
-                                                            if is_us_stock:
-
-                                                                unsupported_info = {
-
-                                                                    'type': 'report_unsupported',
-
-                                                                    'company': report['company'],
-
-                                                                    'stock_code': stock_code,
-
-                                                                    'message': f"暂不支持{report['company']}（{stock_code}）的财报获取，目前仅支持A股和港股"
-
-                                                                }
-
-                                                                unsupported_info['status'] = 'unsupported'
-
-                                                                reports_to_persist.append(unsupported_info)
-
-                                                                yield f"data: {json.dumps(unsupported_info)}\n\n"
-
-                                                                print(f"[异步财报] ⚠️ {report['company']} 为美股，暂不支持")
-
-                                                    
-
-                                                    success_count = len([r for r in financial_reports if r.get('status')=='success'])
-
-                                                    print(f"[异步财报] 共获取 {success_count} 份财报")
-
-                                                else:
-
-                                                    print(f"[异步财报] AI判断需要财报，但下载失败")
-
-                                            else:
-
-                                                print(f"[异步财报] AI判断不需要财报")
-
-                                                
-
-                                        except Exception as report_error:
-
-                                            print(f"[异步财报] 任务异常: {report_error}")
-
-                                            import traceback
-
-                                            traceback.print_exc()
-
-
-
-                                    # 异步财报元数据落库
-
-                                    if request.save_history and reports_to_persist:
-
-                                        try:
-
-                                            await chat_history_service.append_reports_to_last_assistant_message(
-
-                                                db=db,
-
-                                                user_id=current_user.id,
-
-                                                conversation_id=conversation_id,
-
-                                                reports=reports_to_persist
-
+                                            ingest_result = await ingest_pdf(
+                                                report['pdf_path'], current_user.id, document_id=doc.id
                                             )
+                                            print(f"[异步财报] ✅ 自动向量化: {ingest_result}")
+                                        except Exception as ingest_err:
+                                            print(f"[异步财报] 向量化失败（不影响响应）: {ingest_err}")
 
-                                            print(f"[聊天历史] 财报元数据已持久化: {conversation_id}, {len(reports_to_persist)}条")
+                                    except Exception as doc_error:
+                                        print(f"[documents] upsert失败但不影响响应: {doc_error}")
+                                        db.rollback()
 
-                                        except Exception as persist_error:
+                                    report_info = {
+                                        'type': 'report_ready',
+                                        'document_id': document_ids_to_persist[-1] if document_ids_to_persist else None,
+                                        'company': report['company'],
+                                        'year': report['year'],
+                                        'stock_code': report.get('stock_code'),
+                                        'pdf_path': report['pdf_path'],
+                                        'message': f"已获取{report['company']}{report['year']}年财报，已自动向量化，可用于下一步深度分析"
+                                    }
+                                    reports_to_persist.append(report_info)
+                                    yield f"data: {json.dumps(report_info)}\n\n"
+                                    print(f"[异步财报] ✅ {report['company']} {report['year']}年财报已就绪")
 
-                                            print(f"[聊天历史] 财报元数据持久化失败但不影响响应: {str(persist_error)}")
+                                elif report.get('status') == 'failed':
+                                    stock_code = report.get('stock_code', '')
+                                    is_us_stock = stock_code and stock_code.isalpha()
+                                    if is_us_stock:
+                                        unsupported_info = {
+                                            'type': 'report_unsupported',
+                                            'company': report['company'],
+                                            'stock_code': stock_code,
+                                            'message': f"暂不支持{report['company']}（{stock_code}）的财报获取，目前仅支持A股和港股"
+                                        }
+                                        unsupported_info['status'] = 'unsupported'
+                                        reports_to_persist.append(unsupported_info)
+                                        yield f"data: {json.dumps(unsupported_info)}\n\n"
 
+                            success_count = len([r for r in financial_reports if r.get('status')=='success'])
+                            print(f"[异步财报] 共获取 {success_count} 份财报")
+                        else:
+                            print(f"[异步财报] AI判断需要财报，但下载失败")
+                    else:
+                        print(f"[异步财报] AI判断不需要财报")
 
+                except Exception as report_error:
+                    print(f"[异步财报] 任务异常: {report_error}")
+                    import traceback
+                    traceback.print_exc()
 
-                                    # 文档引用落库
+            # 异步财报元数据落库
+            if request.save_history and reports_to_persist:
+                try:
+                    await chat_history_service.append_reports_to_last_assistant_message(
+                        db=db,
+                        user_id=current_user.id,
+                        conversation_id=conversation_id,
+                        reports=reports_to_persist
+                    )
+                    print(f"[聊天历史] 财报元数据已持久化: {conversation_id}, {len(reports_to_persist)}条")
+                except Exception as persist_error:
+                    print(f"[聊天历史] 财报元数据持久化失败但不影响响应: {str(persist_error)}")
 
-                                    if request.save_history and document_ids_to_persist:
+            # 文档引用落库
+            if request.save_history and document_ids_to_persist:
+                try:
+                    await chat_history_service.append_document_ids_to_last_assistant_message(
+                        db=db,
+                        user_id=current_user.id,
+                        conversation_id=conversation_id,
+                        document_ids=document_ids_to_persist
+                    )
+                    print(f"[聊天历史] document_ids 已持久化: {conversation_id}, {len(document_ids_to_persist)}条")
+                except Exception as persist_error:
+                    print(f"[聊天历史] document_ids 持久化失败但不影响响应: {str(persist_error)}")
 
-                                        try:
-
-                                            await chat_history_service.append_document_ids_to_last_assistant_message(
-
-                                                db=db,
-
-                                                user_id=current_user.id,
-
-                                                conversation_id=conversation_id,
-
-                                                document_ids=document_ids_to_persist
-
-                                            )
-
-                                            print(f"[聊天历史] document_ids 已持久化: {conversation_id}, {len(document_ids_to_persist)}条")
-
-                                        except Exception as persist_error:
-
-                                            print(f"[聊天历史] document_ids 持久化失败但不影响响应: {str(persist_error)}")
-
-                                    
-
-                                    yield "data: [DONE]\n\n"
-
-                                    print("流式响应完成\n")
-
-                                
-
-                                elif event == 'error':
-
-                                    error_msg = data.get('message', '未知错误')
-
-                                    print(f"Dify错误: {error_msg}")
-
-                                    yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
-
-                                    
-
-                            except json.JSONDecodeError as je:
-
-                                print(f"JSON解析错误: {je}, 数据: {data_str[:100]}")
-
-                                continue
+            yield "data: [DONE]\n\n"
+            print("流式响应完成\n")
 
         
 
