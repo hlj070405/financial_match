@@ -3,26 +3,27 @@
     <Sidebar 
       :activeModule="activeModule" 
       :menuItems="currentMenuItems"
-      @change-module="changeModule" 
+      @change-module="changeModule"
+      @change-feature="changeFeature"
       @logout="handleLogout"
     />
 
     <div class="flex-1 flex flex-col overflow-hidden relative">
       <main class="flex-1 overflow-hidden relative">
         <div v-show="activeModule === 'chat'" class="h-full w-full">
-          <ChatModule @logout="handleLogout" />
+          <ChatWrapper :activeFeature="activeFeature" />
         </div>
-        <div v-show="activeModule === 'logic'" class="h-full w-full p-6">
-          <LogicFlowModule @logout="handleLogout" />
+        <div v-show="activeModule === 'logic'" class="h-full w-full">
+          <LogicWrapper :activeFeature="activeFeature" />
         </div>
-        <div v-show="activeModule === 'data'" class="h-full w-full p-6">
-          <DataVisualization @logout="handleLogout" />
+        <div v-show="activeModule === 'data'" class="h-full w-full">
+          <DataWrapper :activeFeature="activeFeature" />
         </div>
         <div v-show="activeModule === 'sentiment'" class="h-full w-full">
-          <SentimentModule @logout="handleLogout" />
+          <SentimentModule :activeFeature="activeFeature" @logout="handleLogout" />
         </div>
-        <div v-show="activeModule === 'market'" class="h-full w-full p-6">
-          <MarketModule @logout="handleLogout" />
+        <div v-show="activeModule === 'market'" class="h-full w-full">
+          <MarketWrapper :activeFeature="activeFeature" />
         </div>
         <div v-show="activeModule === 'report'" class="h-full w-full p-6">
           <PlaceholderModule title="一键研报" description="基于公开实时行情和可靠资料，整合当下热点，一键生成领域分析报告" />
@@ -48,17 +49,18 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import Sidebar from '../layouts/Sidebar.vue'
-import ChatModule from '../modules/chat/ChatModule.vue'
-import LogicFlowModule from '../modules/logic/LogicFlowModule.vue'
-import DataVisualization from '../modules/analysis/DataVisualization.vue'
+import ChatWrapper from '../modules/chat/ChatWrapper.vue'
+import LogicWrapper from '../modules/logic/LogicWrapper.vue'
+import DataWrapper from '../modules/analysis/DataWrapper.vue'
 import SentimentModule from '../modules/sentiment/SentimentModule.vue'
-import MarketModule from '../modules/market/MarketModule.vue'
+import MarketWrapper from '../modules/market/MarketWrapper.vue'
 import SettingsModule from '../modules/settings/SettingsModule.vue'
 import PlaceholderModule from '../modules/PlaceholderModule.vue'
 import { getActiveModuleDefinitions } from '../config/modules.js'
 
 const router = useRouter()
 const activeModule = ref('chat')
+const activeFeature = ref('')
 const currentMenuItems = ref([])
 
 const loadModules = () => {
@@ -67,6 +69,11 @@ const loadModules = () => {
 
 const changeModule = (module) => {
   activeModule.value = module
+}
+
+const changeFeature = (moduleId, featureId) => {
+  activeModule.value = moduleId
+  activeFeature.value = featureId
 }
 
 const refreshModules = () => {

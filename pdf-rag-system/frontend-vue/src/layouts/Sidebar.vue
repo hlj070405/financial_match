@@ -222,11 +222,12 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['change-module', 'logout'])
+const emit = defineEmits(['change-module', 'change-feature', 'logout'])
 
 const onFeatureClick = (moduleId, feat) => {
   activeFeatureId.value = feat.id
   emit('change-module', moduleId)
+  emit('change-feature', moduleId, feat.id)
 }
 
 const toggleSidebarExpand = (id) => {
