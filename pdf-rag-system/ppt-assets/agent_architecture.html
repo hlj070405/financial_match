@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>多Agent协同架构</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'SimSun','Microsoft YaHei',serif;background:#fff;color:#222;display:flex;justify-content:center;padding:20px}
+.wrap{width:820px}
+h2{text-align:center;font-size:14px;font-weight:bold;margin-bottom:4px;letter-spacing:2px}
+.sub{text-align:center;font-size:10px;color:#666;margin-bottom:14px}
+.center{text-align:center;margin-bottom:6px}
+.box-input{display:inline-block;padding:5px 20px;border:1px solid #888;font-size:10px;background:#f8f8f8}
+.arr-down{text-align:center;font-size:12px;color:#666;margin:3px 0}
+.dispatcher{text-align:center;margin-bottom:6px}
+.dispatcher .box{display:inline-block;padding:8px 24px;border:2px solid #444}
+.dispatcher h3{font-size:12px;font-weight:bold;margin-bottom:2px}
+.dispatcher .desc{font-size:9px;color:#555}
+.agents{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}
+.agent-card{border:1px solid #888;padding:8px 10px}
+.agent-card h3{font-size:11px;font-weight:bold;margin-bottom:2px;border-bottom:1px solid #ddd;padding-bottom:2px}
+.agent-card .engine{font-size:9px;font-weight:normal;color:#555}
+.agent-card .features{font-size:8.5px;color:#444;line-height:1.6;margin-top:4px}
+.agent-card .features b{color:#222}
+.converge{text-align:center;margin:6px 0}
+.converge .box{display:inline-block;padding:6px 20px;border:1px solid #666}
+.converge h3{font-size:11px;font-weight:bold;margin-bottom:1px}
+.converge .desc{font-size:8.5px;color:#555}
+.design-points{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px}
+.dp{border:1px solid #aaa;padding:6px;text-align:center}
+.dp h4{font-size:9px;font-weight:bold;margin-bottom:2px}
+.dp p{font-size:8px;color:#555;line-height:1.4}
+svg text{font-family:'SimSun','Microsoft YaHei',serif}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h2>图3 多Agent协同架构</h2>
+<div class="sub">调度Agent智能路由 · 专业Agent各司其职</div>
+
+<div class="center"><span class="box-input">用户自然语言输入</span></div>
+<div class="arr-down">↓</div>
+
+<div class="dispatcher">
+<div class="box">
+<h3>调度Agent（ChatPreprocessor）</h3>
+<div class="desc">意图识别 · 路由分发 · 多轮澄清 · 上下文管理</div>
+</div>
+</div>
+
+<div style="display:flex;justify-content:center;margin:4px 0">
+<svg width="600" height="32" viewBox="0 0 600 32">
+<line x1="300" y1="0" x2="300" y2="10" stroke="#444" stroke-width="1.5"/>
+<line x1="100" y1="10" x2="500" y2="10" stroke="#444" stroke-width="1.5"/>
+<line x1="100" y1="10" x2="100" y2="24" stroke="#444" stroke-width="1.5"/>
+<line x1="300" y1="10" x2="300" y2="24" stroke="#444" stroke-width="1.5"/>
+<line x1="500" y1="10" x2="500" y2="24" stroke="#444" stroke-width="1.5"/>
+<polygon points="97,24 100,32 103,24" fill="#444"/>
+<polygon points="297,24 300,32 303,24" fill="#444"/>
+<polygon points="497,24 500,32 503,24" fill="#444"/>
+<text x="155" y="9" fill="#666" font-size="8">财报问答意图</text>
+<text x="355" y="9" fill="#666" font-size="8">行情分析意图</text>
+<text x="410" y="9" fill="#666" font-size="8">生成/摘要意图</text>
+</svg>
+</div>
+
+<div class="agents">
+<div class="agent-card">
+<h3>RAG Agent <span class="engine">（Dify引擎）</span></h3>
+<div class="features">
+<b>财报问答</b> — 基于PDF语义检索+生成<br>
+<b>文档检索</b> — 向量+BM25混合检索<br>
+<b>来源引用</b> — 自动标注PDF页码<br>
+<b>多文档对比</b> — 工作台多文件分析<br>
+<b>上下文增强</b> — 滑动窗口+语义剪枝
+</div>
+</div>
+<div class="agent-card">
+<h3>分析Agent <span class="engine">（Kimi k2.5）</span></h3>
+<div class="features">
+<b>联网搜索</b> — builtin $web_search<br>
+<b>行情融合</b> — Tushare数据注入<br>
+<b>深度分析</b> — 多轮推理+趋势研判<br>
+<b>自主决策</b> — 模型决定是否搜索<br>
+<b>追问对话</b> — 基于分析结果继续
+</div>
+</div>
+<div class="agent-card">
+<h3>生成Agent <span class="engine">（DeepSeek）</span></h3>
+<div class="features">
+<b>标题生成</b> — 对话自动命名<br>
+<b>报告撰写</b> — 结构化研报输出<br>
+<b>数据摘要</b> — 财务数据通俗解读<br>
+<b>模板填充</b> — 定制化报告格式<br>
+<b>归因分析</b> — 因果链路文字化
+</div>
+</div>
+</div>
+
+<div style="display:flex;justify-content:center;margin:2px 0">
+<svg width="600" height="32" viewBox="0 0 600 32">
+<line x1="100" y1="0" x2="100" y2="10" stroke="#444" stroke-width="1.5"/>
+<line x1="300" y1="0" x2="300" y2="10" stroke="#444" stroke-width="1.5"/>
+<line x1="500" y1="0" x2="500" y2="10" stroke="#444" stroke-width="1.5"/>
+<line x1="100" y1="10" x2="500" y2="10" stroke="#444" stroke-width="1.5"/>
+<line x1="300" y1="10" x2="300" y2="24" stroke="#444" stroke-width="1.5"/>
+<polygon points="297,24 300,32 303,24" fill="#444"/>
+</svg>
+</div>
+
+<div class="converge">
+<div class="box">
+<h3>结果聚合 + SSE流式输出（StreamHub）</h3>
+<div class="desc">分阶段推送：数据采集 → 联网搜索 → 分析生成 → 最终结果</div>
+</div>
+</div>
+
+<div class="arr-down">↓</div>
+<div class="center"><span class="box-input">前端实时渲染（Markdown + 图表 + 引用）</span></div>
+
+<div class="design-points">
+<div class="dp">
+<h4>Redis互斥锁</h4>
+<p>同一股票仅一个分析任务<br>TTL 5min防死锁</p>
+</div>
+<div class="dp">
+<h4>结果缓存</h4>
+<p>分析结果Redis缓存10min<br>避免重复API调用</p>
+</div>
+<div class="dp">
+<h4>异步执行</h4>
+<p>后台线程执行耗时分析<br>不阻塞主请求循环</p>
+</div>
+<div class="dp">
+<h4>自主决策</h4>
+<p>Agent自行判断是否联网<br>最多6轮tool_call循环</p>
+</div>
+</div>
+</div>
+</body>
+</html>

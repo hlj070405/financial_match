@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>多源数据融合引擎</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'SimSun','Microsoft YaHei',serif;background:#fff;color:#222;display:flex;justify-content:center;padding:20px}
+.wrap{width:820px}
+h2{text-align:center;font-size:14px;font-weight:bold;margin-bottom:4px;letter-spacing:2px}
+.sub{text-align:center;font-size:10px;color:#666;margin-bottom:12px}
+.row{display:flex;gap:6px;margin-bottom:4px;align-items:stretch}
+.col{flex:1}
+.card{border:1px solid #999;padding:7px 8px;height:100%}
+.card h3{font-size:10px;font-weight:bold;margin-bottom:4px;border-bottom:1px solid #ddd;padding-bottom:2px}
+.tag{font-size:8px;font-weight:normal;color:#555}
+.items{font-size:8.5px;color:#444;line-height:1.6}
+.items b{color:#222}
+.arr-down{text-align:center;font-size:12px;color:#666;margin:3px 0}
+.layer{border:1px solid #999;padding:8px 10px;margin-bottom:4px}
+.layer h3{font-size:11px;font-weight:bold;margin-bottom:6px;border-bottom:1px solid #ddd;padding-bottom:2px}
+.flow{display:flex;gap:3px;flex-wrap:wrap;justify-content:center;margin-bottom:4px}
+.step{padding:2px 7px;border:1px solid #888;font-size:8px;background:#f8f8f8}
+.fa{color:#666;font-size:9px}
+.storage{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.sc{border:1px solid #aaa;padding:6px;text-align:center}
+.sc h4{font-size:9px;font-weight:bold;margin-bottom:3px;border-bottom:1px solid #ddd;padding-bottom:2px}
+.sc p{font-size:8px;color:#444;line-height:1.5}
+.metrics{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:10px}
+.m{border:1px solid #999;padding:5px 10px;text-align:center}
+.m .val{font-size:14px;font-weight:bold}
+.m .lbl{font-size:8px;color:#666;margin-top:1px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h2>图4 多源数据融合引擎</h2>
+<div class="sub">结构化 + 半结构化 + 非结构化 + 实时数据 · 全链路标准化处理</div>
+
+<div class="row">
+<div class="col">
+<div class="card">
+<h3>结构化数据 <span class="tag">[Tushare Pro]</span></h3>
+<div class="items">
+<b>日/周/月K线</b> — 5300+公司<br>
+<b>PE/PB/换手率</b> — 每日估值<br>
+<b>资金流向</b> — 主力/散户/北向<br>
+<b>资产负债表</b> — 季度数据<br>
+<b>现金流量表</b> — 经营/投资/筹资
+</div>
+</div>
+</div>
+<div class="col">
+<div class="card">
+<h3>半结构化数据 <span class="tag">[AKShare]</span></h3>
+<div class="items">
+<b>CPI/GDP</b> — 宏观经济指标<br>
+<b>行业排名</b> — 板块涨跌幅<br>
+<b>利率汇率</b> — 货币市场<br>
+<b>指数成分</b> — 沪深300等
+</div>
+</div>
+</div>
+<div class="col">
+<div class="card">
+<h3>非结构化数据 <span class="tag">[PDF/文档]</span></h3>
+<div class="items">
+<b>年报/半年报</b> — 巨潮资讯<br>
+<b>研究报告</b> — 券商研报<br>
+<b>公告文件</b> — 重大事项<br>
+<b>用户上传</b> — 自定义文档
+</div>
+</div>
+</div>
+<div class="col">
+<div class="card">
+<h3>实时数据 <span class="tag">[多源聚合]</span></h3>
+<div class="items">
+<b>微博热搜</b> — 社交舆情<br>
+<b>百度热搜</b> — 搜索趋势<br>
+<b>东方财富</b> — 财经新闻<br>
+<b>同花顺/雪球</b> — 投资社区<br>
+<b>共8个平台</b> — 实时同步
+</div>
+</div>
+</div>
+</div>
+
+<div class="arr-down">↓</div>
+
+<div class="layer">
+<h3>预处理层（解析 · 清洗 · 分块 · 标准化）</h3>
+<div class="flow">
+<span class="step">PDF解析(OCR+表格)</span><span class="fa">→</span>
+<span class="step">文本清洗去噪</span><span class="fa">→</span>
+<span class="step">滑动窗口分块(512/64)</span><span class="fa">→</span>
+<span class="step">Embedding向量化</span>
+</div>
+<div class="flow">
+<span class="step">结构化数据标准化</span><span class="fa">→</span>
+<span class="step">时序对齐</span><span class="fa">→</span>
+<span class="step">缺失值处理</span><span class="fa">→</span>
+<span class="step">新闻去重+分类</span><span class="fa">→</span>
+<span class="step">元数据标注</span>
+</div>
+</div>
+
+<div class="arr-down">↓</div>
+
+<div class="layer">
+<h3>存储层</h3>
+<div class="storage">
+<div class="sc">
+<h4>Vector DB</h4>
+<p>Weaviate / Qdrant<br>3072维向量索引<br>HNSW ANN检索<br>语义级文档检索</p>
+</div>
+<div class="sc">
+<h4>MySQL 8.0</h4>
+<p>用户/会话/文档<br>自选股/热点新闻<br>股票列表(5300+)<br>结构化业务数据</p>
+</div>
+<div class="sc">
+<h4>Redis 7</h4>
+<p>Agent互斥锁(5min)<br>分析结果缓存(10min)<br>热点数据加速<br>会话状态管理</p>
+</div>
+</div>
+</div>
+
+<div class="metrics">
+<div class="m"><div class="val">5,300+</div><div class="lbl">A股公司覆盖</div></div>
+<div class="m"><div class="val">8个</div><div class="lbl">热点新闻平台</div></div>
+<div class="m"><div class="val">99.1%</div><div class="lbl">PDF解析成功率</div></div>
+<div class="m"><div class="val">3072维</div><div class="lbl">向量Embedding</div></div>
+<div class="m"><div class="val">日更新</div><div class="lbl">行情数据频率</div></div>
+<div class="m"><div class="val">实时</div><div class="lbl">热点同步频率</div></div>
+</div>
+</div>
+</body>
+</html>

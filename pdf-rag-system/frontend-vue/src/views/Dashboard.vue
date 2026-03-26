@@ -20,22 +20,22 @@
           <DataWrapper :activeFeature="activeFeature" />
         </div>
         <div v-show="activeModule === 'sentiment'" class="h-full w-full">
-          <SentimentModule :activeFeature="activeFeature" @logout="handleLogout" />
+          <SentimentWrapper :activeFeature="activeFeature" />
         </div>
         <div v-show="activeModule === 'market'" class="h-full w-full">
           <MarketWrapper :activeFeature="activeFeature" />
         </div>
-        <div v-show="activeModule === 'report'" class="h-full w-full p-6">
-          <PlaceholderModule title="一键研报" description="基于公开实时行情和可靠资料，整合当下热点，一键生成领域分析报告" />
+        <div v-show="activeModule === 'report'" class="h-full w-full">
+          <ReportWrapper :activeFeature="activeFeature" />
         </div>
-        <div v-show="activeModule === 'chain'" class="h-full w-full p-6">
-          <PlaceholderModule title="产业链分析" description="深入分析上下游产业链关系、供应链风险与行业竞争格局" />
+        <div v-show="activeModule === 'chain'" class="h-full w-full">
+          <ChainWrapper :activeFeature="activeFeature" />
         </div>
-        <div v-show="activeModule === 'rag'" class="h-full w-full p-6">
-          <PlaceholderModule title="智能检索" description="非结构化文本语义剪枝、噪声过滤、向量表征、自然语言意图检索全链路闭环" />
+        <div v-show="activeModule === 'rag'" class="h-full w-full">
+          <RagWrapper :activeFeature="activeFeature" />
         </div>
-        <div v-show="activeModule === 'datasource'" class="h-full w-full p-6">
-          <PlaceholderModule title="数据源管理" description="面向庞大金融多源异构大数据，统一数据接入与管理" />
+        <div v-show="activeModule === 'datasource'" class="h-full w-full">
+          <DsWrapper :activeFeature="activeFeature" />
         </div>
         <div v-show="activeModule === 'settings'" class="h-full w-full">
           <SettingsModule @modules-changed="refreshModules" />
@@ -52,10 +52,13 @@ import Sidebar from '../layouts/Sidebar.vue'
 import ChatWrapper from '../modules/chat/ChatWrapper.vue'
 import LogicWrapper from '../modules/logic/LogicWrapper.vue'
 import DataWrapper from '../modules/analysis/DataWrapper.vue'
-import SentimentModule from '../modules/sentiment/SentimentModule.vue'
+import SentimentWrapper from '../modules/sentiment/SentimentWrapper.vue'
 import MarketWrapper from '../modules/market/MarketWrapper.vue'
+import ReportWrapper from '../modules/report/ReportWrapper.vue'
+import ChainWrapper from '../modules/chain/ChainWrapper.vue'
+import RagWrapper from '../modules/rag/RagWrapper.vue'
+import DsWrapper from '../modules/datasource/DsWrapper.vue'
 import SettingsModule from '../modules/settings/SettingsModule.vue'
-import PlaceholderModule from '../modules/PlaceholderModule.vue'
 import { getActiveModuleDefinitions } from '../config/modules.js'
 
 const router = useRouter()
