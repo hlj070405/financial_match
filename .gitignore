@@ -23,14 +23,8 @@ env/
 .DS_Store
 Thumbs.db
 
-# Dify docker volumes (runtime data)
-dify/docker/volumes/
-
-# Dify env files
-dify/docker/middleware.env
-dify/docker/docker-compose.override.yaml
-dify/docker/nginx/conf.d/default.conf
-dify/docker/nginx/ssl/
+# Dify (已移除)
+dify/
 
 # Backend env
 pdf-rag-system/backend/.env
