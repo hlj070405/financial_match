@@ -3,10 +3,7 @@
 import os
 import uuid
 import hashlib
-import httpx
 from fastapi import APIRouter, File, UploadFile, Depends, HTTPException
-from pydantic import BaseModel
-from typing import Optional
 from sqlalchemy.orm import Session
 
 from config import FINANCIAL_REPORTS_DIR
@@ -16,19 +13,13 @@ from auth import get_current_user
 router = APIRouter(prefix="/api", tags=["文件上传"])
 
 
-@router.post("/upload-pdf")
-async def upload_pdf(file: UploadFile = File(...)):
-    """[已废弃] 原 Dify 上传接口，请使用 /api/rag/upload-only 或 /api/rag/ingest/upload"""
-    raise HTTPException(status_code=410, detail="此接口已废弃，请使用 /api/rag/upload-only 或 /api/rag/ingest/upload")
-
-
 @router.post("/upload-file")
 async def upload_file(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """上传文件到系统（本地存储，不再依赖 Dify）"""
+    """上传文件到系统并加入当前用户的文档工作台"""
     try:
         filename = file.filename or "uploaded.pdf"
         is_pdf = filename.lower().endswith(".pdf") or (file.content_type or "").lower() == "application/pdf"
@@ -111,15 +102,3 @@ async def list_user_documents(
         })
 
     return {"documents": documents, "count": len(documents)}
-
-
-class UploadLocalPdfRequest(BaseModel):
-    pdf_path: str
-    company: Optional[str] = None
-    year: Optional[int] = None
-
-
-@router.post("/upload-local-pdf")
-async def upload_local_pdf(request: UploadLocalPdfRequest, current_user: User = Depends(get_current_user)):
-    """[已废弃] 原 Dify 本地PDF上传接口"""
-    raise HTTPException(status_code=410, detail="此接口已废弃，请使用 /api/rag/ingest")

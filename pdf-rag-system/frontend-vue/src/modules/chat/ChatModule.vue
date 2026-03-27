@@ -1917,6 +1917,14 @@ const handleSend = async () => {
 
 
 
+    if (!response.body) {
+
+      throw new Error('聊天响应为空')
+
+    }
+
+
+
     const reader = response.body.getReader()
 
     const decoder = new TextDecoder()
@@ -1947,9 +1955,17 @@ const handleSend = async () => {
 
         if (line.startsWith('data: ')) {
 
-          const data = line.slice(6)
+          const data = line.slice(6).trim()
 
           
+
+          if (!data) {
+
+            continue
+
+          }
+
+
 
           if (data === '[DONE]') {
 
@@ -2372,7 +2388,7 @@ const openPdfViewer = (report) => {
 
   showPdfViewer.value = true
 
-}
+ }
 
 
 
@@ -2380,95 +2396,59 @@ const openPdfViewer = (report) => {
 
 const analyzeWithReport = async (report) => {
 
-  try {
+  const reportDocId = report?.document_id || report?.id
 
-    // 先上传PDF到Dify
+  const matchedDoc = workspaceDocuments.value.find((doc) => {
 
-    const token = localStorage.getItem('access_token')
+    if (reportDocId && doc?.id === reportDocId) return true
 
-    
+    if (report?.pdf_path && doc?.pdf_path === report.pdf_path) return true
 
-    // 显示上传中状态
+    return Boolean(
 
-    messages.value.push({
+      report?.stock_code &&
 
-      role: 'system',
+      doc?.stock_code === report.stock_code &&
 
-      content: `正在准备${report.company}${report.year}年财报...`
-
-    })
-
-    scrollToBottom()
-
-    
-
-    const uploadResponse = await axios.post(
-
-      '/api/upload-local-pdf',
-
-      {
-
-        pdf_path: report.pdf_path,
-
-        company: report.company,
-
-        year: report.year
-
-      },
-
-      {
-
-        headers: {
-
-          'Authorization': `Bearer ${token}`,
-
-          'Content-Type': 'application/json'
-
-        }
-
-      }
+      String(doc?.year || '') === String(report?.year || '')
 
     )
 
-    
+  })
 
-    const result = uploadResponse.data
 
-    console.log('PDF上传到Dify成功:', result)
 
-    
+  const targetDoc = matchedDoc || (reportDocId ? {
 
-    // 将文件添加到uploadedFiles，这样会在下次发送时自动包含
+    id: reportDocId,
 
-    uploadedFiles.value.push(result)
+    title: report?.title || `${report?.company || ''}${report?.year || ''}年财报`,
 
-    await loadWorkspaceDocuments()
+    name: report?.title || report?.company || '财报文档'
 
-    
+  } : null)
 
-    // 发送分析请求
 
-    inputMessage.value = `请基于${report.company}${report.year}年财报进行深度分析，重点关注财务指标、经营状况和风险因素`
 
-    handleSend()
-
-    
-
-  } catch (error) {
-
-    console.error('上传财报失败:', error)
+  if (!targetDoc?.id) {
 
     messages.value.push({
 
       role: 'assistant',
 
-      content: '上传财报失败: ' + (error.response?.data?.detail || error.message)
+      content: '当前财报尚未绑定可直接分析的文档记录，请先等待文档入库完成或在文档工作台中刷新后重试。'
 
     })
 
     scrollToBottom()
 
+    return
+
   }
+
+
+
+  await handleAnalyzeExisting(targetDoc)
 
 }
 
@@ -2511,6 +2491,8 @@ const handleAnalyzeExisting = async (doc) => {
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
+    if (!response.body) throw new Error('分析响应为空')
+
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
@@ -2525,6 +2507,7 @@ const handleAnalyzeExisting = async (doc) => {
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue
         const dataStr = line.slice(6).trim()
+        if (!dataStr) continue
         if (dataStr === '[DONE]') continue
         try {
           const parsed = JSON.parse(dataStr)
@@ -2590,6 +2573,8 @@ const handleDirectAnalyze = async (file) => {
 
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
+    if (!response.body) throw new Error('分析响应为空')
+
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
@@ -2604,6 +2589,7 @@ const handleDirectAnalyze = async (file) => {
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue
         const dataStr = line.slice(6).trim()
+        if (!dataStr) continue
         if (dataStr === '[DONE]') continue
         try {
           const parsed = JSON.parse(dataStr)

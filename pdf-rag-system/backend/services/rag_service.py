@@ -1192,8 +1192,9 @@ async def rag_chat_stream(
 
                 for tc in tc_list:
                     fn_name = tc["function"]["name"]
+                    raw_args = tc["function"].get("arguments") or "{}"
                     try:
-                        fn_args = json.loads(tc["function"]["arguments"])
+                        fn_args = json.loads(raw_args)
                     except json.JSONDecodeError:
                         fn_args = {}
 
@@ -1206,7 +1207,8 @@ async def rag_chat_stream(
                             "role": "tool",
                             "tool_call_id": tc["id"],
                             "name": fn_name,
-                            "content": json.dumps(fn_args),
+                            # Kimi 内置 $web_search：把 tool_call.function.arguments 原封不动回传即可触发搜索
+                            "content": raw_args,
                         })
                     else:
                         if fn_name == "search_vector_store" and preferred_document_ids and not _normalize_int_list(fn_args.get("document_ids")):

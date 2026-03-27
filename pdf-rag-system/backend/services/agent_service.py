@@ -152,15 +152,30 @@ def _kimi_chat(messages: list, *, use_search: bool = False, max_tokens: int = No
         msg = choice.message
 
         if choice.finish_reason == "tool_calls" and msg.tool_calls:
-            messages.append(msg)
+            tc_list = []
             for tc in msg.tool_calls:
-                tool_args = json.loads(tc.function.arguments)
+                tc_list.append({
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                })
+
+            # 注意：messages 必须是可 JSON 序列化的 dict 列表，不能直接 append OpenAI 的 message 对象
+            messages.append({"role": "assistant", "content": msg.content, "tool_calls": tc_list})
+
+            for tc in msg.tool_calls:
+                raw_args = tc.function.arguments or "{}"
+                try:
+                    tool_args = json.loads(raw_args)
+                except Exception:
+                    tool_args = {"raw_arguments": raw_args}
                 print(f"[Agent] $web_search round {_round+1}: {tool_args}")
+                # Kimi 内置 $web_search：把 tool_call.function.arguments 原封不动回传即可触发搜索
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
                     "name": tc.function.name,
-                    "content": json.dumps(tool_args),
+                    "content": raw_args,
                 })
         else:
             return msg.content or ""
@@ -236,13 +251,17 @@ def _kimi_chat_stream(messages: list, *, use_search: bool = False, max_tokens: i
             messages.append({"role": "assistant", "content": None, "tool_calls": tc_list})
 
             for tc in tc_list:
-                tool_args = json.loads(tc["function"]["arguments"])
+                raw_args = tc["function"]["arguments"] or "{}"
+                try:
+                    tool_args = json.loads(raw_args)
+                except Exception:
+                    tool_args = {"raw_arguments": raw_args}
                 print(f"[Agent-Stream] $web_search round {_round+1}: {tool_args}")
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc["id"],
                     "name": tc["function"]["name"],
-                    "content": json.dumps(tool_args),
+                    "content": raw_args,
                 })
             continue
 
