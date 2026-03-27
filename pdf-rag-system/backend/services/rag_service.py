@@ -29,12 +29,12 @@ from config import (
     KIMI_TEMPERATURE, KIMI_MAX_TOKENS, KIMI_MAX_ROUNDS,
     EMBEDDING_MODEL, EMBEDDING_DIM, EMBEDDING_BASE_URL, EMBEDDING_BATCH_SIZE,
     CHUNK_SIZE, CHUNK_OVERLAP, FINANCIAL_REPORTS_DIR,
+    CHROMA_HOST, CHROMA_PORT
 )
 
 # ---------- 配置 ----------
 
 BACKEND_BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-CHROMA_PERSIST_DIR = os.path.join(BACKEND_BASE_DIR, "chroma_db")
 
 LLM_MODEL = KIMI_MODEL
 LLM_BASE_URL = KIMI_BASE_URL
@@ -92,6 +92,89 @@ def _infer_file_type(source_name: Optional[str]) -> str:
     if ext in {".html", ".htm", ".mhtml", ".url"}:
         return "web"
     return ext.lstrip(".") or "unknown"
+
+
+def _normalize_int_list(value) -> Optional[List[int]]:
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return [value]
+    if isinstance(value, str):
+        raw_items = [item.strip() for item in value.split(",")]
+    elif isinstance(value, (list, tuple, set)):
+        raw_items = list(value)
+    else:
+        return None
+
+    normalized = []
+    for item in raw_items:
+        if item in {None, ""}:
+            continue
+        try:
+            normalized.append(int(item))
+        except (TypeError, ValueError):
+            continue
+    return normalized or None
+
+
+def _build_source_refs(items: List[Dict]) -> List[str]:
+    refs = []
+    seen = set()
+    for item in items or []:
+        source = item.get("source") or "unknown"
+        page_number = item.get("page_number")
+        is_table = item.get("is_table", False)
+        ref = source
+        if page_number:
+            ref = f"{ref} 第{page_number}页"
+        if is_table:
+            ref = f"{ref} [表格]"
+        if ref in seen:
+            continue
+        seen.add(ref)
+        refs.append(ref)
+    return refs
+
+
+def _find_document_record(db, user_id: int, source_name: Optional[str] = None,
+                          stock_code: Optional[str] = None,
+                          company_name: Optional[str] = None,
+                          year: Optional[int] = None):
+    if db is None:
+        return None
+
+    from database import Document
+
+    base_name = os.path.basename(source_name or "")
+    query = db.query(Document).filter(Document.user_id == user_id)
+
+    if base_name:
+        matched = query.filter(Document.pdf_path.like(f"%{base_name}")).order_by(Document.id.desc()).first()
+        if matched:
+            return matched
+
+    if stock_code and year is not None:
+        matched = query.filter(
+            Document.stock_code == stock_code,
+            Document.year == year,
+        ).order_by(Document.id.desc()).first()
+        if matched:
+            return matched
+
+    if company_name and year is not None:
+        matched = query.filter(
+            Document.company == company_name,
+            Document.year == year,
+        ).order_by(Document.id.desc()).first()
+        if matched:
+            return matched
+
+    if company_name:
+        matched = query.filter(Document.company == company_name).order_by(Document.id.desc()).first()
+        if matched:
+            return matched
+
+    return None
 
 
 def _sort_retrieved_chunks(items: List[Dict], sort_by: str) -> List[Dict]:
@@ -205,9 +288,9 @@ _embedding_fn = SiliconFlowEmbedding()
 def _get_chroma():
     global _chroma_client
     if _chroma_client is None:
-        os.makedirs(CHROMA_PERSIST_DIR, exist_ok=True)
-        _chroma_client = chromadb.PersistentClient(
-            path=CHROMA_PERSIST_DIR,
+        _chroma_client = chromadb.HttpClient(
+            host=CHROMA_HOST,
+            port=CHROMA_PORT,
             settings=ChromaSettings(anonymized_telemetry=False)
         )
     return _chroma_client
@@ -451,7 +534,8 @@ async def retrieve(query: str, user_id: int, top_k: int = 5,
                    document_ids: List[int] = None,
                    score_threshold: float = 0.55,
                    file_types: List[str] = None,
-                   sort_by: str = "score_desc") -> List[Dict]:
+                   sort_by: str = "score_desc",
+                   raise_on_error: bool = False) -> List[Dict]:
     """
     从用户的向量库中检索相关文档块。
 
@@ -491,6 +575,8 @@ async def retrieve(query: str, user_id: int, top_k: int = 5,
     except Exception as e:
         print(f"[RAG] 检索失败: {e}")
         traceback.print_exc()
+        if raise_on_error:
+            raise
         return []
 
     if not results or not results["documents"] or not results["documents"][0]:
@@ -623,8 +709,8 @@ A股财报披露时间表：
 
 当前日期 {_today}，你应该智能判断最新可用的财报：
 - 不要直接用当前年份，而是根据以上时间表判断哪个报告已经发布
-- 优先获取最新的已发布报告，不指定 quarter 让系统自动选择最新可用的
-- 如果用户说“最新财报”，就不要指定 quarter，留空由系统自动查找
+- 优先获取最新的已发布报告，不指定 quarter 让系统自动选择最新可用报告。
+- 如果用户说“最新财报”，就不要指定 quarter，留空由系统自动查找最新可用报告。
 
 ## 沟通风格
 {profile['tone']}
@@ -672,7 +758,8 @@ A股财报披露时间表：
 2. 每家公司最多调用 search_vector_store 1-2 次，避免反复搜索
 3. fetch_financial_report 只在确认知识库中没有该公司数据时才调用
 4. 收集到足够信息后，尽快生成最终分析报告，不要继续调用工具
-5. 初始检索结果中已有的数据可以直接使用，无需再次搜索"""
+5. 初始检索结果只作为候选上下文；如果用户明确提到具体公司、股票代码或指定财报，不能仅凭初始全库召回下结论
+6. 当 fetch_financial_report 返回 document_id 时，后续 search_vector_store 必须优先传入 document_ids，在对应财报内定向检索"""
 
     if context_text:
         system_prompt += f"""
@@ -746,6 +833,13 @@ AGENT_TOOLS = [
                         "type": "integer",
                         "description": "返回结果数量，默认6",
                         "default": 6
+                    },
+                    "document_ids": {
+                        "type": "array",
+                        "description": "可选。限定只在指定 document_id 对应的文档内检索。对比特定公司财报时必须优先传入。",
+                        "items": {
+                            "type": "integer"
+                        }
                     }
                 },
                 "required": ["query"]
@@ -795,9 +889,27 @@ async def _execute_tool(tool_name: str, tool_args: dict, user_id: int, db=None) 
     if tool_name == "search_vector_store":
         query = tool_args.get("query", "")
         top_k = tool_args.get("top_k", 6)
-        results = await retrieve(query, user_id, top_k=top_k)
+        document_ids = _normalize_int_list(tool_args.get("document_ids"))
+        try:
+            results = await retrieve(
+                query,
+                user_id,
+                top_k=top_k,
+                document_ids=document_ids,
+                raise_on_error=True,
+            )
+        except Exception as e:
+            return json.dumps({
+                "status": "error",
+                "message": f"知识库检索失败: {str(e)}",
+                "document_ids": document_ids or []
+            }, ensure_ascii=False)
         if not results:
-            return json.dumps({"status": "empty", "message": "未找到相关文档内容。用户可能尚未上传相关财报。"}, ensure_ascii=False)
+            return json.dumps({
+                "status": "empty",
+                "message": "未找到相关文档内容。用户可能尚未上传相关财报。",
+                "document_ids": document_ids or []
+            }, ensure_ascii=False)
         # 精简返回给模型
         simplified = []
         for r in results:
@@ -806,15 +918,21 @@ async def _execute_tool(tool_name: str, tool_args: dict, user_id: int, db=None) 
                 "source": r["source"],
                 "page": r["page_number"],
                 "score": r["score"],
-                "is_table": r.get("is_table", False)
+                "is_table": r.get("is_table", False),
+                "document_id": r.get("document_id")
             })
-        return json.dumps({"status": "ok", "count": len(simplified), "results": simplified}, ensure_ascii=False)
+        return json.dumps({
+            "status": "ok",
+            "count": len(simplified),
+            "results": simplified,
+            "sources": _build_source_refs(results),
+            "document_ids": document_ids or []
+        }, ensure_ascii=False)
 
     elif tool_name == "fetch_financial_report":
         company_name = tool_args.get("company_name", "")
         stock_code = tool_args.get("stock_code", "")
         quarter = tool_args.get("quarter")
-
         # 智能推断年份：如果模型没传 year，根据当前月份判断最新可用财报年份
         if "year" in tool_args and tool_args["year"]:
             year = tool_args["year"]
@@ -832,11 +950,20 @@ async def _execute_tool(tool_name: str, tool_args: dict, user_id: int, db=None) 
         for doc in existing:
             src = doc.get("source", "")
             if stock_code in src and str(year) in src:
+                matched_doc = _find_document_record(
+                    db,
+                    user_id,
+                    source_name=src,
+                    stock_code=stock_code,
+                    company_name=company_name,
+                    year=year,
+                )
                 return json.dumps({
                     "status": "already_exists",
                     "message": f"向量库中已有 {src}（{doc.get('count', 0)} 个向量块），无需重新下载。请直接使用 search_vector_store 检索。",
                     "source": src,
-                    "chunks": doc.get("count", 0)
+                    "chunks": doc.get("count", 0),
+                    "document_id": matched_doc.id if matched_doc else None
                 }, ensure_ascii=False)
 
         # 没有则下载
@@ -936,6 +1063,7 @@ async def rag_chat_stream(
     yield f"data: {json.dumps({'type': 'phase', 'content': 'AI 正在分析...'}, ensure_ascii=False)}\n\n"
 
     messages = _build_rag_prompt(query, chunks, style, user_role=user_role, has_context=bool(chunks))
+    preferred_document_ids = _normalize_int_list(document_ids) or []
 
     # 插入历史对话
     if conversation_history:
@@ -1081,6 +1209,9 @@ async def rag_chat_stream(
                             "content": json.dumps(fn_args),
                         })
                     else:
+                        if fn_name == "search_vector_store" and preferred_document_ids and not _normalize_int_list(fn_args.get("document_ids")):
+                            fn_args["document_ids"] = preferred_document_ids.copy()
+
                         # 自定义 tool — 发送详细 phase 事件
                         _cn = fn_args.get('company_name', '')
                         _yr = fn_args.get('year', datetime.now().year)
@@ -1104,6 +1235,9 @@ async def rag_chat_stream(
                             _st = tr.get("status", "")
                             _chunks = tr.get("chunks", 0)
                             _count = tr.get("count", 0)
+                            _doc_ids = _normalize_int_list(tr.get("document_ids")) or []
+                            if tr.get("document_id") is not None:
+                                _doc_ids = _normalize_int_list(_doc_ids + [tr.get("document_id")]) or []
 
                             if fn_name == "fetch_financial_report":
                                 if _st == "already_exists":
@@ -1116,12 +1250,23 @@ async def rag_chat_stream(
                                 elif _st == "failed":
                                     _msg = '✗ 未找到' + _cn + '的财报'
                                     yield f"data: {json.dumps({'type': 'phase', 'content': _msg}, ensure_ascii=False)}\n\n"
+                                elif _st == "error":
+                                    _msg = '✗ ' + (tr.get("message") or ('处理' + _cn + '财报失败'))
+                                    yield f"data: {json.dumps({'type': 'phase', 'content': _msg}, ensure_ascii=False)}\n\n"
+
+                                if _st in {"already_exists", "success"} and _doc_ids:
+                                    for doc_id in _doc_ids:
+                                        if doc_id not in preferred_document_ids:
+                                            preferred_document_ids.append(doc_id)
                             elif fn_name == "search_vector_store":
                                 if _st == "ok":
                                     _msg = '✓ 检索到 ' + str(_count) + ' 条相关内容'
                                     yield f"data: {json.dumps({'type': 'phase', 'content': _msg}, ensure_ascii=False)}\n\n"
+                                    if tr.get("sources"):
+                                        yield f"data: {json.dumps({'type': 'sources', 'sources': tr.get('sources')}, ensure_ascii=False)}\n\n"
                                 else:
-                                    yield f"data: {json.dumps({'type': 'phase', 'content': '✗ 知识库中未找到相关内容'}, ensure_ascii=False)}\n\n"
+                                    _msg = '✗ ' + (tr.get("message") or '知识库中未找到相关内容')
+                                    yield f"data: {json.dumps({'type': 'phase', 'content': _msg}, ensure_ascii=False)}\n\n"
                         except Exception:
                             pass
 
