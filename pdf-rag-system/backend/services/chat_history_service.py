@@ -52,7 +52,9 @@ class ChatHistoryService:
         message: str,
         response: str,
         is_first_message: bool = False,
-        reports: Optional[List[dict]] = None
+        reports: Optional[List[dict]] = None,
+        thinking_steps: Optional[List[str]] = None,
+        interaction: Optional[dict] = None
     ):
         """保存或更新聊天历史"""
         try:
@@ -67,16 +69,23 @@ class ChatHistoryService:
             if chat:
                 # 更新现有会话
                 messages = json.loads(chat.messages) if chat.messages else []
-                messages.append({
-                    "role": "user",
-                    "content": message
-                })
+                # 避免重复：占位记录已包含该 user 消息时不再追加
+                last_msg = messages[-1] if messages else None
+                if not (last_msg and last_msg.get("role") == "user" and last_msg.get("content") == message):
+                    messages.append({
+                        "role": "user",
+                        "content": message
+                    })
                 assistant_message = {
                     "role": "assistant",
                     "content": response
                 }
                 if reports:
                     assistant_message["reports"] = reports
+                if thinking_steps:
+                    assistant_message["thinking_steps"] = thinking_steps
+                if interaction:
+                    assistant_message["interaction"] = interaction
                 messages.append(assistant_message)
                 chat.messages = json.dumps(messages, ensure_ascii=False)
                 
@@ -105,9 +114,16 @@ class ChatHistoryService:
                 title = message[:20] if len(message) > 20 else message
                 print(f"[聊天历史] 使用用户输入作为标题: {title}")
                 
+                assistant_msg = {"role": "assistant", "content": response}
+                if reports:
+                    assistant_msg["reports"] = reports
+                if thinking_steps:
+                    assistant_msg["thinking_steps"] = thinking_steps
+                if interaction:
+                    assistant_msg["interaction"] = interaction
                 messages = [
                     {"role": "user", "content": message},
-                    {"role": "assistant", "content": response, **({"reports": reports} if reports else {})}
+                    assistant_msg
                 ]
                 
                 chat = ChatHistory(

@@ -34,10 +34,14 @@
     <!-- Content -->
     <div class="flex-1 overflow-y-auto p-6 custom-scrollbar">
       <!-- Loading -->
-      <div v-if="loading && !diagnosisData" class="flex items-center justify-center h-full">
+      <div v-if="loading && !diagnosisData" class="flex flex-col items-center justify-center h-full">
         <div class="text-center">
           <Loader2 class="w-8 h-8 animate-spin text-blue-500 mx-auto" />
           <p class="text-xs text-gray-500 mt-3">AI 正在分析企业财务数据...</p>
+        </div>
+        <div v-if="streamText" class="mt-4 max-w-2xl w-full bg-gray-50 border border-gray-100 rounded-xl p-4 max-h-48 overflow-y-auto">
+          <p class="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">实时生成中</p>
+          <pre class="text-[11px] text-gray-600 whitespace-pre-wrap font-mono leading-relaxed">{{ streamText.slice(-800) }}</pre>
         </div>
       </div>
 
@@ -58,6 +62,11 @@
 
       <!-- Results -->
       <template v-else>
+        <!-- Demo Banner -->
+        <div v-if="isDemo" class="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-4 flex items-center justify-between">
+          <p class="text-[11px] text-blue-600"><span class="font-bold">示例数据</span> — 当前展示的是AI分析示例，输入公司名称可获取实时分析</p>
+          <button @click="diagnosisData = null; isDemo = false" class="text-[10px] text-blue-500 hover:text-blue-700 font-medium">清除示例</button>
+        </div>
         <div v-if="diagnosisData.summary" class="bg-gradient-to-r from-gray-900 to-gray-800 rounded-xl p-5 text-white mb-5">
           <div class="flex items-center gap-2 mb-1.5">
             <Sparkles class="w-3.5 h-3.5 text-orange-400" />
@@ -75,33 +84,30 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { BarChart3, Search, Loader2, Sparkles } from 'lucide-vue-next'
 import DiagnosisRenderer from '../../diagnosis/DiagnosisRenderer.vue'
+import { useSSE } from '../../../composables/useSSE'
+import { EXAMPLE_DIAGNOSIS } from '../../../composables/exampleData'
 
 const companyInput = ref('')
 const diagnosisData = ref(null)
-const loading = ref(false)
-const error = ref('')
+const isDemo = ref(false)
 const examples = ['贵州茅台', '比亚迪', '宁德时代', '招商银行']
+const { loading, error, streamText, fetchSSE } = useSSE()
 
-const fetchDiagnosis = async () => {
+onMounted(() => {
+  diagnosisData.value = EXAMPLE_DIAGNOSIS
+  isDemo.value = true
+})
+
+const fetchDiagnosis = () => {
   if (!companyInput.value.trim()) return
-  loading.value = true
-  error.value = ''
-  try {
-    const res = await fetch('/api/diagnosis/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ company: companyInput.value.trim() })
-    })
-    if (!res.ok) throw new Error('请求失败')
-    diagnosisData.value = await res.json()
-  } catch (e) {
-    error.value = '分析失败: ' + e.message
-  } finally {
-    loading.value = false
-  }
+  isDemo.value = false
+  diagnosisData.value = null
+  fetchSSE('/api/diagnosis/analyze', { company: companyInput.value.trim() }, {
+    onDone: (data) => { diagnosisData.value = data }
+  })
 }
 </script>
 

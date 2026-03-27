@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 
 from config import FINANCIAL_REPORTS_DIR
 from database import init_db
-from routers import auth, chat, file, economic, hotspot, tushare, diagnosis, watchlist, agent, rag
+from routers import auth, chat, file, economic, hotspot, tushare, diagnosis, watchlist, agent, rag, chain
 
 app = FastAPI(title="PDF RAG Analysis System")
 
@@ -44,6 +44,7 @@ app.include_router(diagnosis.router)
 app.include_router(watchlist.router)
 app.include_router(agent.router)
 app.include_router(rag.router)
+app.include_router(chain.router)
 
 
 @app.get("/health")

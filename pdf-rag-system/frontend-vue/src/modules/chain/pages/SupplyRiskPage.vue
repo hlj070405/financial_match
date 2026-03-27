@@ -48,15 +48,24 @@
       </div>
 
       <!-- Loading -->
-      <div v-if="loading" class="flex items-center justify-center h-full">
+      <div v-if="loading" class="flex flex-col items-center justify-center h-full">
         <div class="text-center">
           <Loader2 class="w-8 h-8 animate-spin text-amber-500 mx-auto" />
-          <p class="text-xs text-gray-500 mt-3">正在评估供应链风险...</p>
+          <p class="text-xs text-gray-500 mt-3">AI 正在评估供应链风险...</p>
+        </div>
+        <div v-if="streamText" class="mt-4 max-w-2xl w-full bg-gray-50 border border-gray-100 rounded-xl p-4 max-h-48 overflow-y-auto">
+          <p class="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">实时生成中</p>
+          <pre class="text-[11px] text-gray-600 whitespace-pre-wrap font-mono leading-relaxed">{{ streamText.slice(-800) }}</pre>
         </div>
       </div>
 
       <!-- Results -->
       <div v-if="result && !loading" class="max-w-5xl mx-auto space-y-5">
+        <!-- Demo Banner -->
+        <div v-if="isDemo" class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 flex items-center justify-between">
+          <p class="text-[11px] text-amber-600"><span class="font-bold">示例数据</span> — 当前展示的是半导体供应链风险示例，输入行业/企业名称可获取实时分析</p>
+          <button @click="clearDemo" class="text-[10px] text-amber-500 hover:text-amber-700 font-medium">清除示例</button>
+        </div>
         <!-- Overall Risk -->
         <div class="grid grid-cols-4 gap-4">
           <div v-for="card in result.overallCards" :key="card.label"
@@ -137,78 +146,64 @@
           <p class="text-xs text-gray-300 leading-relaxed">{{ result.aiSummary }}</p>
         </div>
       </div>
+
+      <!-- Error -->
+      <div v-if="error" class="max-w-5xl mx-auto mt-4 bg-red-50 border border-red-100 rounded-xl p-4 text-xs text-red-600">{{ error }}</div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import * as echarts from 'echarts'
 import { ShieldAlert, Search, Loader2, AlertTriangle, MapPin, Sparkles } from 'lucide-vue-next'
+import { useSSE } from '../../../composables/useSSE'
+import { EXAMPLE_SUPPLY_RISK } from '../../../composables/exampleData'
 
 const industry = ref('')
-const loading = ref(false)
-const result = ref(null)
 const heatmapRef = ref(null)
+const isDemo = ref(false)
+let heatmapChart = null
 const examples = ['新能源汽车', '半导体', '光伏产业', '消费电子']
+const { loading, error, streamText, result, fetchSSE } = useSSE()
 
-const mockResult = (name) => ({
-  overallCards: [
-    { label: '综合风险', value: '中等', sub: '评分 52/100', valueColor: 'text-amber-600', border: 'border-amber-200' },
-    { label: '高风险环节', value: '3', sub: '需重点关注', valueColor: 'text-rose-600', border: 'border-rose-200' },
-    { label: '供应商集中度', value: 'CR3 68%', sub: '集中度偏高', valueColor: 'text-orange-600', border: 'border-orange-200' },
-    { label: '替代可行性', value: '良好', sub: '72%可替代', valueColor: 'text-emerald-600', border: 'border-emerald-200' }
-  ],
-  geoRisks: [
-    { region: '东南亚', level: 45 },
-    { region: '欧洲', level: 30 },
-    { region: '北美', level: 25 },
-    { region: '非洲', level: 72 },
-    { region: '南美', level: 55 },
-    { region: '中东', level: 60 }
-  ],
-  risks: [
-    { segment: '锂矿开采', level: '高', risk: '产能集中于澳洲/南美，地缘风险大', alternative: '盐湖提锂、固态锂', impact: 5 },
-    { segment: '正极材料', level: '中', risk: '镍钴价格波动，供应链较长', alternative: '磷酸铁锂替代三元', impact: 3 },
-    { segment: '隔膜生产', level: '低', risk: '国产化率高，技术成熟', alternative: '多家供应商可选', impact: 2 },
-    { segment: '电芯制造', level: '低', risk: '龙头产能充足，技术壁垒高', alternative: '二线厂商备份', impact: 2 },
-    { segment: '半导体芯片', level: '高', risk: '高端芯片依赖进口，制裁风险', alternative: '国产替代加速中', impact: 5 },
-    { segment: '稀土永磁', level: '高', risk: '资源集中度极高，出口管控', alternative: '减量设计/无稀土电机', impact: 4 }
-  ],
-  aiSummary: `${name}产业链综合供应链风险评分52分（满分100），处于中等风险水平。核心风险集中在上游原材料环节（锂矿、稀土）和关键芯片环节。建议企业采取多元化供应商策略、适度增加安全库存、加速国产替代验证。中长期来看，随着盐湖提锂技术成熟和国产芯片替代推进，供应链风险有望逐步下降。`
+onMounted(() => {
+  result.value = EXAMPLE_SUPPLY_RISK
+  isDemo.value = true
+  nextTick(() => initHeatmap(EXAMPLE_SUPPLY_RISK))
 })
 
-const initHeatmap = () => {
-  if (!heatmapRef.value) return
-  const chart = echarts.init(heatmapRef.value)
-  const segments = ['锂矿', '正极', '隔膜', '电芯', '芯片', '稀土']
-  const dimensions = ['中断概率', '影响程度', '恢复时间']
-  const data = []
-  segments.forEach((s, si) => {
-    dimensions.forEach((d, di) => {
-      data.push([di, si, Math.floor(Math.random() * 60 + 20)])
+const initHeatmap = (data) => {
+  nextTick(() => {
+    if (!heatmapRef.value) return
+    const segments = data.heatmapSegments || []
+    const dimensions = data.heatmapDimensions || ['中断概率', '影响程度', '恢复时间']
+    const heatData = data.heatmapData || []
+    if (!segments.length || !heatData.length) return
+    if (heatmapChart) heatmapChart.dispose()
+    heatmapChart = echarts.init(heatmapRef.value)
+    heatmapChart.setOption({
+      tooltip: { textStyle: { fontSize: 10 }, formatter: p => `${segments[p.data[1]]} - ${dimensions[p.data[0]]}: ${p.data[2]}` },
+      grid: { top: 5, bottom: 30, left: 55, right: 10 },
+      xAxis: { type: 'category', data: dimensions, axisLabel: { fontSize: 9 }, splitArea: { show: true } },
+      yAxis: { type: 'category', data: segments, axisLabel: { fontSize: 9 }, splitArea: { show: true } },
+      visualMap: { min: 0, max: 100, show: false, inRange: { color: ['#dcfce7', '#fef9c3', '#fecaca', '#fca5a5'] } },
+      series: [{ type: 'heatmap', data: heatData, label: { show: true, fontSize: 10, color: '#374151' }, emphasis: { itemStyle: { shadowBlur: 10 } } }]
     })
-  })
-  chart.setOption({
-    tooltip: { textStyle: { fontSize: 10 }, formatter: p => `${segments[p.data[1]]} - ${dimensions[p.data[0]]}: ${p.data[2]}` },
-    grid: { top: 5, bottom: 30, left: 55, right: 10 },
-    xAxis: { type: 'category', data: dimensions, axisLabel: { fontSize: 9 }, splitArea: { show: true } },
-    yAxis: { type: 'category', data: segments, axisLabel: { fontSize: 9 }, splitArea: { show: true } },
-    visualMap: { min: 0, max: 100, show: false, inRange: { color: ['#dcfce7', '#fef9c3', '#fecaca', '#fca5a5'] } },
-    series: [{ type: 'heatmap', data, label: { show: true, fontSize: 10, color: '#374151' }, emphasis: { itemStyle: { shadowBlur: 10 } } }]
   })
 }
 
-const assess = async () => {
+const clearDemo = () => { result.value = null; isDemo.value = false }
+
+const assess = () => {
   if (!industry.value.trim()) return
-  loading.value = true
-  result.value = null
-  try {
-    await new Promise(r => setTimeout(r, 1200))
-    result.value = mockResult(industry.value.trim())
-    nextTick(() => initHeatmap())
-  } finally { loading.value = false }
+  isDemo.value = false
+  fetchSSE('/api/chain/supply-risk', { name: industry.value.trim() }, {
+    onDone: (data) => { initHeatmap(data) }
+  })
 }
+
+onBeforeUnmount(() => { heatmapChart?.dispose() })
 </script>
 
 <style scoped>

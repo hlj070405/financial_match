@@ -36,7 +36,7 @@ import { ref, computed, watch } from 'vue'
 import { CandlestickChart } from 'lucide-vue-next'
 import { ALL_MODULES } from '../../config/modules.js'
 
-import KLinePage from './pages/KLinePage.vue'
+import MarketModule from './MarketModule.vue'
 import IndicatorPage from './pages/IndicatorPage.vue'
 import FlowPage from './pages/FlowPage.vue'
 
@@ -48,7 +48,7 @@ const moduleDef = ALL_MODULES.find(m => m.id === 'market')
 const features = moduleDef?.features || []
 
 const featureMap = {
-  'mkt_kline': KLinePage,
+  'mkt_kline': MarketModule,
   'mkt_indicator': IndicatorPage,
   'mkt_flow': FlowPage
 }
@@ -57,7 +57,7 @@ const currentFeature = ref(props.activeFeature || 'mkt_kline')
 const transitionName = ref('page-slide-right')
 let prevIndex = 0
 const showTabs = computed(() => features.length > 1)
-const currentComponent = computed(() => featureMap[currentFeature.value] || KLinePage)
+const currentComponent = computed(() => featureMap[currentFeature.value] || MarketModule)
 
 const switchTo = (id) => {
   const newIdx = features.findIndex(f => f.id === id)

@@ -79,7 +79,7 @@ class TushareService:
         :param list_status: 上市状态 L上市 D退市 P暂停
         """
         key = make_key("stock_basic", exchange, list_status)
-        cached = cache_get(key)
+        cached = cache_get(key, stale_type=0)
         if cached is not None:
             return cached
         try:
@@ -105,7 +105,7 @@ class TushareService:
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")
         key = make_key("trade_cal", exchange, start_date, end_date)
-        cached = cache_get(key)
+        cached = cache_get(key, stale_type=0)
         if cached is not None:
             return cached
         try:
@@ -137,7 +137,7 @@ class TushareService:
         if not start_date:
             start_date = (datetime.now() - timedelta(days=90)).strftime("%Y%m%d")
         key = make_key("daily", ts_code, start_date, end_date)
-        cached = cache_get(key)
+        cached = cache_get(key, stale_type=1)
         if cached is not None:
             return cached
         try:
@@ -163,27 +163,35 @@ class TushareService:
         :param trade_date: 交易日期 YYYYMMDD
         """
         key = make_key("daily_basic", ts_code, trade_date)
-        cached = cache_get(key)
+        cached = cache_get(key, stale_type=1)
         if cached is not None:
             return cached
+        fields = "ts_code,trade_date,close,turnover_rate,pe,pe_ttm,pb,ps,ps_ttm,dv_ratio,dv_ttm,total_share,float_share,total_mv,circ_mv"
         try:
             pro = cls._get_pro()
-            params = {}
-            if ts_code:
-                params["ts_code"] = ts_code
-            if trade_date:
-                params["trade_date"] = trade_date
-            elif not ts_code:
-                params["trade_date"] = datetime.now().strftime("%Y%m%d")
-            df = pro.daily_basic(
-                **params,
-                fields="ts_code,trade_date,close,turnover_rate,pe,pe_ttm,pb,ps,ps_ttm,dv_ratio,dv_ttm,total_share,float_share,total_mv,circ_mv"
-            )
-            if ts_code and not trade_date and df is not None and not df.empty:
-                df = df.sort_values("trade_date", ascending=False).head(1)
-            result = _df_to_records(df)
-            cache_set(key, result, TTL_REALTIME)
-            return result
+            # 指定了 trade_date 或只查全市场快照，直接单次查询
+            if trade_date or not ts_code:
+                params = {}
+                if ts_code:
+                    params["ts_code"] = ts_code
+                if trade_date:
+                    params["trade_date"] = trade_date
+                else:
+                    params["trade_date"] = datetime.now().strftime("%Y%m%d")
+                df = pro.daily_basic(**params, fields=fields)
+                result = _df_to_records(df)
+                cache_set(key, result, TTL_REALTIME)
+                return result
+
+            # 只传 ts_code：往前最多回溯 10 个自然日，找到有数据的最近交易日
+            for offset in range(10):
+                candidate = (datetime.now() - timedelta(days=offset)).strftime("%Y%m%d")
+                df = pro.daily_basic(ts_code=ts_code, trade_date=candidate, fields=fields)
+                if df is not None and not df.empty:
+                    result = _df_to_records(df)
+                    cache_set(key, result, TTL_REALTIME)
+                    return result
+            return []
         except Exception as e:
             return [{"error": f"获取每日指标失败: {str(e)}"}]
 
@@ -195,7 +203,7 @@ class TushareService:
         if not start_date:
             start_date = (datetime.now() - timedelta(days=365)).strftime("%Y%m%d")
         key = make_key("weekly", ts_code, start_date, end_date)
-        cached = cache_get(key)
+        cached = cache_get(key, stale_type=1)
         if cached is not None:
             return cached
         try:
@@ -217,7 +225,7 @@ class TushareService:
         if not start_date:
             start_date = (datetime.now() - timedelta(days=365 * 3)).strftime("%Y%m%d")
         key = make_key("monthly", ts_code, start_date, end_date)
-        cached = cache_get(key)
+        cached = cache_get(key, stale_type=1)
         if cached is not None:
             return cached
         try:
@@ -240,7 +248,7 @@ class TushareService:
         :param market: 市场代码 MSCI/CSI/SSE/SZSE/CICC/SW/OTH
         """
         key = make_key("index_basic", market, limit)
-        cached = cache_get(key)
+        cached = cache_get(key, stale_type=0)
         if cached is not None:
             return cached
         try:
@@ -269,7 +277,7 @@ class TushareService:
         if not start_date:
             start_date = (datetime.now() - timedelta(days=90)).strftime("%Y%m%d")
         key = make_key("index_daily", ts_code, start_date, end_date)
-        cached = cache_get(key)
+        cached = cache_get(key, stale_type=1)
         if cached is not None:
             return cached
         try:
@@ -296,7 +304,7 @@ class TushareService:
         if not start_date:
             start_date = (datetime.now() - timedelta(days=30)).strftime("%Y%m%d")
         key = make_key("moneyflow", ts_code, start_date, end_date)
-        cached = cache_get(key)
+        cached = cache_get(key, stale_type=1)
         if cached is not None:
             return cached
         try:
@@ -318,7 +326,7 @@ class TushareService:
         获取资产负债表
         """
         key = make_key("balancesheet", ts_code, period, limit)
-        cached = cache_get(key)
+        cached = cache_get(key, stale_type=2)
         if cached is not None:
             return cached
         try:
@@ -339,7 +347,7 @@ class TushareService:
         获取现金流量表
         """
         key = make_key("cashflow", ts_code, period, limit)
-        cached = cache_get(key)
+        cached = cache_get(key, stale_type=2)
         if cached is not None:
             return cached
         try:

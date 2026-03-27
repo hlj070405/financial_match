@@ -80,19 +80,13 @@
               v-for="feat in item.features"
               :key="feat.id"
               @click="onFeatureClick(item.id, feat)"
-              class="flex items-center gap-2 py-[6px] pl-9 pr-2 rounded-lg text-[12px] transition-all duration-200 cursor-pointer"
+              class="flex items-center gap-2 py-[6px] ml-9 pr-2 rounded-lg text-[12px] transition-all duration-200 cursor-pointer pl-2.5"
               :class="activeFeatureId === feat.id
                 ? 'bg-gray-900 text-white shadow-sm shadow-gray-900/10'
                 : isFeatureAvailableForRole(feat)
                   ? 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
                   : 'text-gray-400 hover:bg-gray-50'"
             >
-              <div 
-                class="w-1.5 h-1.5 rounded-full shrink-0"
-                :class="activeFeatureId === feat.id 
-                  ? 'bg-orange-400'
-                  : isFeatureAvailableForRole(feat) ? 'bg-emerald-400' : 'bg-gray-300'"
-              ></div>
               <span class="truncate">{{ feat.name }}</span>
               <span v-if="!isFeatureAvailableForRole(feat)" class="text-[9px] shrink-0 ml-auto" :class="activeFeatureId === feat.id ? 'text-amber-300' : 'text-amber-500'">面向{{ feat.targetLabel }}</span>
             </div>

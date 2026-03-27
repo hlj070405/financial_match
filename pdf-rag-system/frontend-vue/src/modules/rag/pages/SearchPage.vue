@@ -177,6 +177,12 @@ const fileTypes = [
   { label: 'Word', value: 'word' },
   { label: '网页', value: 'web' }
 ]
+const fileTypeLabels = {
+  pdf: 'PDF文档',
+  excel: 'Excel文档',
+  word: 'Word文档',
+  web: '网页内容'
+}
 const searchHistory = ref(['贵州茅台2023年报分析', '新能源补贴政策', '银行不良贷款率'])
 
 const toggleFilter = (v) => {
@@ -205,14 +211,19 @@ const doSearch = async () => {
   selectedResult.value = null
   try {
     const token = localStorage.getItem('access_token')
+    const minScore = threshold.value / 100
     const resp = await fetch('/api/rag/search', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: query.value.trim(), top_k: topK.value })
+      body: JSON.stringify({
+        query: query.value.trim(),
+        top_k: topK.value,
+        score_threshold: minScore,
+        file_types: activeFilters.value
+      })
     })
     const data = await resp.json()
     searchTime.value = data.elapsed_ms || 0
-    const minScore = threshold.value / 100
     results.value = (data.results || [])
       .filter(r => r.score >= minScore)
       .map(r => ({
@@ -220,7 +231,7 @@ const doSearch = async () => {
         source: r.source,
         page: r.page_number,
         score: Math.round(r.score * 100),
-        type: 'PDF文档',
+        type: fileTypeLabels[r.file_type] || r.file_type || '文档',
         highlight: highlightText(r.text, query.value.trim()),
         fullText: r.text
       }))

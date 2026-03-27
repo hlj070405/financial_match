@@ -396,6 +396,11 @@
 
           </div>
 
+          <div v-else-if="dailyBasicDisplay.length === 0" class="text-center py-6 text-gray-300">
+            <BarChart3 class="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p class="text-xs">暂无指标数据</p>
+          </div>
+
           <div v-else class="space-y-3">
 
             <div v-for="item in dailyBasicDisplay" :key="item.label" class="flex items-center justify-between">
@@ -1247,16 +1252,24 @@ const fetchIndexOverview = async () => {
 
 
 
+let fetchLock = null
+
 const fetchStockData = async () => {
 
   if (!currentTsCode.value) return
+
+  const code = currentTsCode.value
+  
+  // 如果有正在进行的请求，取消它
+  if (fetchLock && fetchLock !== code) {
+    console.log('[DEBUG] 取消旧请求:', fetchLock, '-> 新请求:', code)
+  }
+  fetchLock = code
 
   chartLoading.value = true
   basicLoading.value = true
   moneyflowLoading.value = true
   finLoading.value = true
-
-  const code = currentTsCode.value
   const fetchFn = activePeriod.value === 'weekly'
     ? tushareApi.getWeekly
     : activePeriod.value === 'monthly'
@@ -1264,6 +1277,7 @@ const fetchStockData = async () => {
       : tushareApi.getDaily
 
   // 全部并行请求
+  console.log('[DEBUG] 开始请求数据, code:', code)
   const [klineRes, basicRes, mfRes, bRes, cRes] = await Promise.allSettled([
     fetchFn(code),
     tushareApi.getDailyBasic(code),
@@ -1271,6 +1285,13 @@ const fetchStockData = async () => {
     tushareApi.getBalancesheet(code),
     tushareApi.getCashflow(code),
   ])
+  console.log('[DEBUG] 请求完成:', code)
+
+  // 检查是否是当前股票的请求，如果不是则丢弃结果
+  if (fetchLock !== code) {
+    console.log('[DEBUG] 丢弃过期请求结果:', code, '当前:', fetchLock)
+    return
+  }
 
   // K线
   if (klineRes.status === 'fulfilled') {
@@ -1297,10 +1318,18 @@ const fetchStockData = async () => {
 
   // 财务
   if (bRes.status === 'fulfilled') {
+    console.log('[DEBUG] bRes.value:', JSON.stringify(bRes.value).slice(0, 200))
     balanceData.value = bRes.value.data || []
+    console.log('[DEBUG] balanceData:', balanceData.value.length, '条')
+  } else {
+    console.error('资产负债表:', bRes.reason)
   }
   if (cRes.status === 'fulfilled') {
+    console.log('[DEBUG] cRes.value:', JSON.stringify(cRes.value).slice(0, 200))
     cashflowData_raw.value = cRes.value.data || []
+    console.log('[DEBUG] cashflowData:', cashflowData_raw.value.length, '条')
+  } else {
+    console.error('现金流量表:', cRes.reason)
   }
   finLoading.value = false
 

@@ -17,12 +17,22 @@
               <p class="text-[11px] text-gray-500 mt-0.5">大批量文档一键导入与自动处理，支持文件夹递归扫描</p>
             </div>
           </div>
-          <button @click="startBatch" :disabled="batchRunning"
-            class="px-4 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-1.5">
-            <Loader2 v-if="batchRunning" class="w-3.5 h-3.5 animate-spin" />
-            <Play v-else class="w-3.5 h-3.5" />
-            {{ batchRunning ? '处理中...' : '开始批量导入' }}
-          </button>
+          <div class="flex items-center gap-2">
+            <input
+              ref="fileInputRef"
+              type="file"
+              multiple
+              accept=".pdf"
+              class="hidden"
+              @change="onFilesSelected"
+            />
+            <button @click="triggerBatchPicker" :disabled="batchRunning"
+              class="px-4 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-1.5">
+              <Loader2 v-if="batchRunning" class="w-3.5 h-3.5 animate-spin" />
+              <Play v-else class="w-3.5 h-3.5" />
+              {{ batchRunning ? '处理中...' : '开始批量导入' }}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -49,7 +59,7 @@
               <span class="text-[10px] text-gray-400">{{ completedJobs }}/{{ batchJobs.length }} 已完成</span>
               <div class="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                 <div class="h-full bg-blue-500 rounded-full transition-all duration-300"
-                  :style="{ width: (completedJobs / batchJobs.length * 100) + '%' }"></div>
+                  :style="{ width: (batchJobs.length ? (completedJobs / batchJobs.length * 100) : 0) + '%' }"></div>
               </div>
             </div>
           </div>
@@ -176,43 +186,125 @@ import { FolderUp, Play, Loader2, ListChecks, CheckCircle, AlertCircle, Clock, T
 
 const batchRunning = ref(false)
 const donutRef = ref(null)
+const fileInputRef = ref(null)
 
 const statusLabel = (s) => ({ done: '已完成', processing: '处理中', error: '失败', pending: '等待中' })[s] || s
 
-const batchStats = [
-  { label: '总文件数', value: '171', color: 'text-gray-800' },
-  { label: '已完成', value: '156', color: 'text-emerald-600' },
-  { label: '处理中', value: '12', color: 'text-blue-600' },
-  { label: '失败', value: '3', color: 'text-rose-600' },
-  { label: '总向量数', value: '24.8K', color: 'text-purple-600' }
-]
+const batchSummary = ref({ total: 0, success: 0, failed: 0, chunks: 0 })
+
+const batchStats = computed(() => [
+  { label: '总文件数', value: String(batchSummary.value.total), color: 'text-gray-800' },
+  { label: '已完成', value: String(batchSummary.value.success), color: 'text-emerald-600' },
+  { label: '处理中', value: batchRunning.value ? '1' : '0', color: 'text-blue-600' },
+  { label: '失败', value: String(batchSummary.value.failed), color: 'text-rose-600' },
+  { label: '总向量数', value: String(batchSummary.value.chunks), color: 'text-purple-600' }
+])
 
 const completedJobs = computed(() => batchJobs.value.filter(j => j.status === 'done').length)
 
-const batchJobs = ref([
-  { name: '2023年年报合集', files: 45, size: '320MB', progress: 100, status: 'done', eta: '已完成' },
-  { name: '行业研究报告', files: 28, size: '186MB', progress: 100, status: 'done', eta: '已完成' },
-  { name: '财务数据Excel', files: 35, size: '52MB', progress: 100, status: 'done', eta: '已完成' },
-  { name: '券商研报合集', files: 38, size: '245MB', progress: 72, status: 'processing', eta: '约8分钟' },
-  { name: '监管政策文件', files: 12, size: '45MB', progress: 45, status: 'processing', eta: '约12分钟' },
-  { name: '历史公告', files: 10, size: '78MB', progress: 0, status: 'pending', eta: '-' },
-  { name: '损坏文件测试', files: 3, size: '15MB', progress: 30, status: 'error', eta: 'PDF解析失败' }
-])
+const batchJobs = ref([])
 
-const logs = ref([
-  { time: '15:32:01', text: '[INFO] 批量导入任务启动，共 171 个文件', color: 'text-emerald-400' },
-  { time: '15:32:02', text: '[INFO] 开始处理: 2023年年报合集 (45 files)', color: 'text-gray-400' },
-  { time: '15:35:18', text: '[OK] 2023年年报合集 处理完成，生成 8,420 向量', color: 'text-emerald-400' },
-  { time: '15:35:19', text: '[INFO] 开始处理: 行业研究报告 (28 files)', color: 'text-gray-400' },
-  { time: '15:38:45', text: '[OK] 行业研究报告 处理完成，生成 5,230 向量', color: 'text-emerald-400' },
-  { time: '15:38:46', text: '[INFO] 开始处理: 财务数据Excel (35 files)', color: 'text-gray-400' },
-  { time: '15:40:12', text: '[OK] 财务数据Excel 处理完成，生成 3,150 向量', color: 'text-emerald-400' },
-  { time: '15:40:13', text: '[INFO] 开始处理: 券商研报合集 (38 files)', color: 'text-gray-400' },
-  { time: '15:42:30', text: '[WARN] 损坏文件测试/report_03.pdf: PDF解析失败，文件损坏', color: 'text-amber-400' },
-  { time: '15:43:00', text: '[ERROR] 损坏文件测试 任务失败: 3/3 文件解析错误', color: 'text-rose-400' }
-])
+const logs = ref([])
 
-const startBatch = () => { batchRunning.value = true }
+const nowTime = () => new Date().toLocaleTimeString('zh-CN', { hour12: false })
+
+const pushLog = (text, color = 'text-gray-400') => {
+  logs.value.unshift({ time: nowTime(), text, color })
+  if (logs.value.length > 50) logs.value = logs.value.slice(0, 50)
+}
+
+const formatBytes = (bytes) => {
+  if (!bytes || bytes <= 0) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`
+}
+
+const triggerBatchPicker = () => {
+  if (batchRunning.value) return
+  fileInputRef.value?.click()
+}
+
+const onFilesSelected = async (event) => {
+  const files = Array.from(event.target?.files || [])
+  if (!files.length) return
+
+  batchRunning.value = true
+  batchSummary.value = { total: files.length, success: 0, failed: 0, chunks: 0 }
+  batchJobs.value = files.map(file => ({
+    name: file.name,
+    files: 1,
+    size: formatBytes(file.size),
+    progress: 10,
+    status: 'processing',
+    eta: '上传中'
+  }))
+  pushLog(`[INFO] 批量导入任务启动，共 ${files.length} 个文件`, 'text-emerald-400')
+
+  const formData = new FormData()
+  files.forEach(file => formData.append('files', file))
+
+  try {
+    const token = localStorage.getItem('access_token')
+    const resp = await fetch('/api/rag/ingest/batch-upload', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData
+    })
+    const data = await resp.json()
+    if (!resp.ok) {
+      throw new Error(data.detail || '批量导入失败')
+    }
+
+    const resultMap = Object.fromEntries((data.results || []).map(item => [item.filename, item]))
+    batchSummary.value = data.summary || batchSummary.value
+    batchJobs.value = files.map(file => {
+      const result = resultMap[file.name]
+      if (!result) {
+        return {
+          name: file.name,
+          files: 1,
+          size: formatBytes(file.size),
+          progress: 0,
+          status: 'error',
+          eta: '无返回结果'
+        }
+      }
+
+      const success = result.status === 'ok'
+      pushLog(
+        success
+          ? `[OK] ${result.filename} 处理完成，生成 ${result.chunks || 0} 个向量`
+          : `[ERROR] ${result.filename} 处理失败: ${result.message || '未知错误'}`,
+        success ? 'text-emerald-400' : 'text-rose-400'
+      )
+
+      return {
+        name: result.filename,
+        files: 1,
+        size: formatBytes(file.size),
+        progress: success ? 100 : 100,
+        status: success ? 'done' : 'error',
+        eta: success ? `+${result.chunks || 0} 向量` : (result.message || '失败')
+      }
+    })
+  } catch (error) {
+    pushLog(`[ERROR] 批量导入失败: ${error.message}`, 'text-rose-400')
+    batchJobs.value = files.map(file => ({
+      name: file.name,
+      files: 1,
+      size: formatBytes(file.size),
+      progress: 100,
+      status: 'error',
+      eta: error.message
+    }))
+    batchSummary.value = { total: files.length, success: 0, failed: files.length, chunks: 0 }
+  } finally {
+    batchRunning.value = false
+    if (event.target) event.target.value = ''
+    nextTick(() => initDonut())
+  }
+}
 
 const initDonut = () => {
   if (!donutRef.value) return
@@ -223,15 +315,18 @@ const initDonut = () => {
       label: { show: false },
       itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
       data: [
-        { value: 156, itemStyle: { color: '#10b981' } },
-        { value: 12, itemStyle: { color: '#3b82f6' } },
-        { value: 3, itemStyle: { color: '#ef4444' } }
+        { value: batchSummary.value.success, itemStyle: { color: '#10b981' } },
+        { value: batchRunning.value ? 1 : 0, itemStyle: { color: '#3b82f6' } },
+        { value: batchSummary.value.failed, itemStyle: { color: '#ef4444' } }
       ]
     }]
   })
 }
 
-onMounted(() => { nextTick(() => initDonut()) })
+onMounted(() => {
+  pushLog('[INFO] 等待选择批量导入文件', 'text-gray-400')
+  nextTick(() => initDonut())
+})
 </script>
 
 <style scoped>

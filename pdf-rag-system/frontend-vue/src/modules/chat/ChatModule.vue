@@ -204,23 +204,69 @@
 
                 <div class="bg-white border border-gray-100 rounded-2xl rounded-tl-sm p-6 shadow-sm">
 
-                  <!-- AI Loading State -->
+                  <!-- AI Thinking Steps (always visible when steps exist) -->
 
-                  <div v-if="!message.content && message.isLoading" class="flex items-center gap-2 text-gray-500">
+                  <div v-if="message.thinkingSteps && message.thinkingSteps.length > 0" class="mb-3">
 
-                    <Loader2 class="w-4 h-4 animate-spin" />
+                    <details :open="message.isLoading || !message.content">
 
-                    <span class="text-sm font-medium">正在深度分析数据...</span>
+                      <summary class="flex items-center gap-1.5 cursor-pointer select-none text-xs font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-500 transition-colors">
+
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+
+                        <span>AI 思考过程</span>
+
+                        <span class="text-gray-300 font-normal normal-case tracking-normal ml-1">{{ message.thinkingSteps.length }} 步</span>
+
+                        <Loader2 v-if="message.isLoading && !message.content" class="w-3 h-3 animate-spin ml-1 text-indigo-500" />
+
+                      </summary>
+
+                      <div class="space-y-1 pl-1 border-l-2 border-indigo-200 mt-2">
+
+                        <div v-for="(step, si) in message.thinkingSteps" :key="si"
+                          class="flex items-start gap-2 pl-3 py-0.5 text-xs transition-all duration-300"
+                          :class="si === message.thinkingSteps.length - 1 && message.isLoading && !message.content ? 'text-indigo-600 font-medium' : 'text-gray-400'">
+
+                          <Loader2 v-if="si === message.thinkingSteps.length - 1 && message.isLoading && !message.content" class="w-3 h-3 animate-spin mt-0.5 flex-shrink-0" />
+
+                          <svg v-else class="w-3 h-3 mt-0.5 flex-shrink-0 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+
+                          <span>{{ step.content }}</span>
+
+                          <span v-if="step.time" class="ml-auto text-gray-300 flex-shrink-0">{{ step.time }}</span>
+
+                        </div>
+
+                      </div>
+
+                    </details>
 
                   </div>
 
-                  
+                  <!-- AI Loading State (no steps yet) -->
+
+                  <div v-if="!message.content && message.isLoading && (!message.thinkingSteps || message.thinkingSteps.length === 0)" class="flex items-center gap-2 text-gray-500">
+
+                    <Loader2 class="w-4 h-4 animate-spin" />
+
+                    <span class="text-sm font-medium">正在连接 AI...</span>
+
+                  </div>
 
                   <!-- AI Content -->
 
-                  <div v-else class="prose prose-sm max-w-none prose-p:text-gray-600 prose-headings:text-gray-900 prose-strong:text-gray-900 prose-code:text-violet-600 prose-pre:bg-gray-900 prose-pre:border-gray-800" v-html="formatMessage(message.content)"></div>
+                  <div v-if="message.content" class="prose prose-sm max-w-none prose-p:text-gray-600 prose-headings:text-gray-900 prose-strong:text-gray-900 prose-code:text-violet-600 prose-pre:bg-gray-900 prose-pre:border-gray-800" v-html="formatMessage(message.content)"></div>
 
 
+
+                  <!-- 正在加载进一步建议 -->
+                  <div v-if="message.interactionLoading && !message.interaction" class="mt-4 pt-4 border-t border-gray-100">
+                    <div class="flex items-center gap-2 text-gray-400">
+                      <Loader2 class="w-4 h-4 animate-spin" />
+                      <span class="text-xs font-medium">正在生成进一步建议...</span>
+                    </div>
+                  </div>
 
                   <!-- 结构化交互卡片: 需求澄清 / 选项 / 建议 / 确认 -->
                   <div v-if="message.interaction && message.interaction.items && message.interaction.items.length > 0" class="mt-4 pt-4 border-t border-gray-100">
@@ -1242,6 +1288,10 @@ const normalizeLoadedMessages = (loadedMessages, conversationId) => {
 
       thinking: m.thinking ?? null,
 
+      thinkingSteps: Array.isArray(m.thinking_steps) ? m.thinking_steps.map(s => ({ content: s, time: '' })) : [],
+
+      interaction: m.interaction ?? null,
+
       sources: Array.isArray(m.sources) ? m.sources : [],
 
       workflowRunId: m.workflowRunId ?? null,
@@ -1699,13 +1749,17 @@ const handleSend = async () => {
 
     thinking: null,
 
+    thinkingSteps: [],
+
     sources: [],
+
+    interactionLoading: false,
 
     workflowRunId: null,
 
     elapsedTime: null,
 
-    reports: [] // 存储该消息关联的财报
+    reports: []
 
   }
 
@@ -1953,6 +2007,38 @@ const handleSend = async () => {
 
               }
 
+            } else if (parsed.type === 'phase') {
+
+              if (targetMessages[messageIndex]) {
+
+                const step = { content: parsed.content, time: new Date().toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) }
+
+                if (!targetMessages[messageIndex].thinkingSteps) targetMessages[messageIndex].thinkingSteps = []
+
+                targetMessages[messageIndex].thinkingSteps.push(step)
+
+                if (parsed.content && parsed.content.includes('进一步建议')) {
+                  targetMessages[messageIndex].interactionLoading = true
+                }
+
+                if (messages.value === targetMessages && isUserAtBottom()) scrollToBottom()
+
+              }
+
+            } else if (parsed.type === 'sources') {
+
+              if (targetMessages[messageIndex] && parsed.sources) {
+
+                targetMessages[messageIndex].sources = parsed.sources
+
+                const step = { content: `检索到 ${parsed.sources.length} 个相关文档片段`, time: new Date().toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) }
+
+                if (!targetMessages[messageIndex].thinkingSteps) targetMessages[messageIndex].thinkingSteps = []
+
+                targetMessages[messageIndex].thinkingSteps.push(step)
+
+              }
+
             } else if (parsed.type === 'text') {
 
               if (targetMessages[messageIndex]) {
@@ -1979,6 +2065,7 @@ const handleSend = async () => {
 
               // 结构化交互事件：需求澄清、选项卡片、后续建议等
               if (targetMessages[messageIndex] && parsed.interaction) {
+                targetMessages[messageIndex].interactionLoading = false
                 targetMessages[messageIndex].interaction = parsed.interaction
                 if (messages.value === targetMessages && isUserAtBottom()) {
                   scrollToBottom()

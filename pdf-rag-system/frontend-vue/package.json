@@ -20,6 +20,7 @@
     "highlight.js": "^11.11.1",
     "lucide-vue-next": "^0.575.0",
     "marked": "^11.1.1",
+    "naive-ui": "^2.44.1",
     "tailwind-merge": "^3.5.0",
     "three": "^0.134.0",
     "vanta": "^0.5.24",

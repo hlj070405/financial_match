@@ -12,7 +12,7 @@ import threading
 from typing import Dict, Optional
 from openai import OpenAI
 
-from config import KIMI_API_KEY, REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_PASSWORD
+from config import KIMI_API_KEY, KIMI_BASE_URL, KIMI_MODEL, KIMI_TEMPERATURE, KIMI_MAX_TOKENS, REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_PASSWORD
 
 _AGENT_PREFIX = "agent:"
 _LOCK_TTL = 300          # 锁最长持有 5 分钟（防死锁）
@@ -21,7 +21,7 @@ _RESULT_TTL = 600        # 分析结果缓存 10 分钟
 # ---------- Kimi Client (单例) ----------
 
 _kimi_client = OpenAI(
-    base_url="https://api.moonshot.cn/v1",
+    base_url=KIMI_BASE_URL,
     api_key=KIMI_API_KEY,
 )
 
@@ -128,7 +128,7 @@ def _collect_stock_data(ts_code: str) -> Dict:
 
 # ---------- Kimi 对话（带自动联网搜索） ----------
 
-def _kimi_chat(messages: list, *, use_search: bool = False, max_tokens: int = 4096) -> str:
+def _kimi_chat(messages: list, *, use_search: bool = False, max_tokens: int = None) -> str:
     """
     调用 Kimi kimi-k2.5 对话。
     use_search=True 时注入 builtin $web_search，模型自动决定是否搜索。
@@ -138,10 +138,10 @@ def _kimi_chat(messages: list, *, use_search: bool = False, max_tokens: int = 40
 
     for _round in range(6):
         kwargs = {
-            "model": "kimi-k2.5",
+            "model": KIMI_MODEL,
             "messages": messages,
-            "temperature": 0.6,
-            "max_tokens": max_tokens,
+            "temperature": KIMI_TEMPERATURE,
+            "max_tokens": max_tokens or KIMI_MAX_TOKENS,
             "extra_body": {"thinking": {"type": "disabled"}},
         }
         if tools:
@@ -170,7 +170,7 @@ def _kimi_chat(messages: list, *, use_search: bool = False, max_tokens: int = 40
 
 # ---------- Kimi 流式对话（SSE） ----------
 
-def _kimi_chat_stream(messages: list, *, use_search: bool = False, max_tokens: int = 4096):
+def _kimi_chat_stream(messages: list, *, use_search: bool = False, max_tokens: int = None):
     """
     流式调用 Kimi kimi-k2.5。
     yield 每个 content delta 文本片段。
@@ -180,10 +180,10 @@ def _kimi_chat_stream(messages: list, *, use_search: bool = False, max_tokens: i
 
     for _round in range(6):
         kwargs = {
-            "model": "kimi-k2.5",
+            "model": KIMI_MODEL,
             "messages": messages,
-            "temperature": 0.6,
-            "max_tokens": max_tokens,
+            "temperature": KIMI_TEMPERATURE,
+            "max_tokens": max_tokens or KIMI_MAX_TOKENS,
             "extra_body": {"thinking": {"type": "disabled"}},
         }
         if tools:

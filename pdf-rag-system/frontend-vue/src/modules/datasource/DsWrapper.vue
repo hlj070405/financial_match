@@ -26,7 +26,7 @@
 import { ref, computed, watch } from 'vue'
 import { Database } from 'lucide-vue-next'
 import { ALL_MODULES } from '../../config/modules.js'
-import UploadPage from './pages/UploadPage.vue'
+import UploadPage from './pages/UploadPage_naive.vue'
 import BatchPage from './pages/BatchPage.vue'
 import MultiSourcePage from './pages/MultiSourcePage.vue'
 

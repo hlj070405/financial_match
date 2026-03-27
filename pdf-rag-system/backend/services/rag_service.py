@@ -24,27 +24,88 @@ import chromadb
 from chromadb.config import Settings as ChromaSettings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from config import DEEPSEEK_API_KEY
+from config import (
+    DEEPSEEK_API_KEY, KIMI_API_KEY, KIMI_BASE_URL, KIMI_MODEL,
+    KIMI_TEMPERATURE, KIMI_MAX_TOKENS, KIMI_MAX_ROUNDS,
+    EMBEDDING_MODEL, EMBEDDING_DIM, EMBEDDING_BASE_URL, EMBEDDING_BATCH_SIZE,
+    CHUNK_SIZE, CHUNK_OVERLAP, FINANCIAL_REPORTS_DIR,
+)
 
 # ---------- 配置 ----------
 
-EMBEDDING_MODEL = "BAAI/bge-large-zh-v1.5"
-EMBEDDING_DIM = 1024
-EMBEDDING_BASE_URL = "https://api.siliconflow.cn/v1"
-EMBEDDING_BATCH_SIZE = 16
+BACKEND_BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+CHROMA_PERSIST_DIR = os.path.join(BACKEND_BASE_DIR, "chroma_db")
 
-CHROMA_PERSIST_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "chroma_db")
+LLM_MODEL = KIMI_MODEL
+LLM_BASE_URL = KIMI_BASE_URL
 
-CHUNK_SIZE = 512
-CHUNK_OVERLAP = 64
-
-# LLM 用于 RAG 回答（复用硅基流动 Qwen）
-LLM_MODEL = "Qwen/Qwen2.5-72B-Instruct"
-LLM_BASE_URL = "https://api.siliconflow.cn/v1"
+# Kimi OpenAI-compatible client（用于 function calling）
+from openai import AsyncOpenAI as _AsyncOpenAI
+_kimi_async_client = _AsyncOpenAI(
+    base_url=KIMI_BASE_URL,
+    api_key=KIMI_API_KEY,
+)
 
 # ---------- Embedding 客户端 ----------
 
 _embedding_cache = {}
+
+
+def _resolve_existing_pdf_path(pdf_path: str) -> str:
+    if not pdf_path:
+        return pdf_path
+
+    normalized = pdf_path.replace("\\", "/")
+    candidates = []
+    if os.path.isabs(pdf_path):
+        candidates.append(pdf_path)
+    else:
+        candidates.append(os.path.join(os.getcwd(), pdf_path))
+        candidates.append(os.path.join(BACKEND_BASE_DIR, pdf_path))
+
+    tail = normalized.split("financial_reports/", 1)[1] if "financial_reports/" in normalized else normalized
+    candidates.append(os.path.join(FINANCIAL_REPORTS_DIR, tail))
+    candidates.append(os.path.join(BACKEND_BASE_DIR, "financial_reports", tail))
+
+    seen = set()
+    fallback = None
+    for candidate in candidates:
+        full_path = os.path.abspath(candidate)
+        if fallback is None:
+            fallback = full_path
+        if full_path in seen:
+            continue
+        seen.add(full_path)
+        if os.path.exists(full_path):
+            return full_path
+    return fallback or os.path.abspath(pdf_path)
+
+
+def _infer_file_type(source_name: Optional[str]) -> str:
+    ext = os.path.splitext((source_name or "").lower())[1]
+    if ext == ".pdf":
+        return "pdf"
+    if ext in {".xls", ".xlsx", ".csv"}:
+        return "excel"
+    if ext in {".doc", ".docx"}:
+        return "word"
+    if ext in {".html", ".htm", ".mhtml", ".url"}:
+        return "web"
+    return ext.lstrip(".") or "unknown"
+
+
+def _sort_retrieved_chunks(items: List[Dict], sort_by: str) -> List[Dict]:
+    if sort_by == "score_asc":
+        return sorted(items, key=lambda item: (item["score"], item["page_number"], item["chunk_index"]))
+    if sort_by == "page_asc":
+        return sorted(items, key=lambda item: (item["page_number"], item["chunk_index"], -item["score"]))
+    if sort_by == "page_desc":
+        return sorted(items, key=lambda item: (-item["page_number"], -item["chunk_index"], -item["score"]))
+    if sort_by == "source_asc":
+        return sorted(items, key=lambda item: (item["source"], item["page_number"], item["chunk_index"], -item["score"]))
+    if sort_by == "source_desc":
+        return sorted(items, key=lambda item: (item["source"], item["page_number"], item["chunk_index"], -item["score"]), reverse=True)
+    return sorted(items, key=lambda item: (item["score"], -item["page_number"], -item["chunk_index"]), reverse=True)
 
 
 async def _get_embeddings(texts: List[str], api_key: str = None) -> List[List[float]]:
@@ -311,9 +372,7 @@ async def ingest_pdf(pdf_path: str, user_id: int, document_id: int = None) -> Di
     Returns:
         {"status": "ok", "chunks": N, "document_id": ..., "source": ...}
     """
-    full_path = pdf_path
-    if not os.path.isabs(full_path):
-        full_path = os.path.join(os.getcwd(), full_path)
+    full_path = _resolve_existing_pdf_path(pdf_path)
 
     if not os.path.exists(full_path):
         return {"status": "error", "message": f"文件不存在: {full_path}"}
@@ -390,7 +449,9 @@ async def ingest_pdf(pdf_path: str, user_id: int, document_id: int = None) -> Di
 
 async def retrieve(query: str, user_id: int, top_k: int = 5,
                    document_ids: List[int] = None,
-                   score_threshold: float = 0.55) -> List[Dict]:
+                   score_threshold: float = 0.55,
+                   file_types: List[str] = None,
+                   sort_by: str = "score_desc") -> List[Dict]:
     """
     从用户的向量库中检索相关文档块。
 
@@ -417,9 +478,13 @@ async def retrieve(query: str, user_id: int, top_k: int = 5,
         # 获取查询 embedding
         query_embedding = await _get_embeddings([query])
 
+        query_limit = top_k
+        if file_types or sort_by != "score_desc":
+            query_limit = min(max(top_k * 5, top_k), 100)
+
         results = collection.query(
             query_embeddings=query_embedding,
-            n_results=top_k,
+            n_results=query_limit,
             where=where_filter,
             include=["documents", "metadatas", "distances"]
         )
@@ -444,20 +509,27 @@ async def retrieve(query: str, user_id: int, top_k: int = 5,
         if similarity < score_threshold:
             filtered_count += 1
             continue
+        source = meta.get("source", "unknown")
+        file_type = _infer_file_type(source)
+        if file_types and file_type not in file_types:
+            filtered_count += 1
+            continue
         retrieved.append({
             "text": doc,
-            "source": meta.get("source", "unknown"),
+            "source": source,
             "page_number": meta.get("page_number", 0),
             "chunk_index": meta.get("chunk_index", 0),
             "is_table": meta.get("is_table", False),
             "document_id": meta.get("document_id"),
+            "file_type": file_type,
             "score": round(similarity, 4)
         })
 
     if filtered_count > 0:
         print(f"[RAG] 检索过滤: 丢弃 {filtered_count} 个低分结果 (阈值 {score_threshold})")
 
-    return retrieved
+    retrieved = _sort_retrieved_chunks(retrieved, sort_by)
+    return retrieved[:top_k]
 
 
 # ---------- RAG 对话（流式） ----------
@@ -531,9 +603,28 @@ def _build_rag_prompt(query: str, context_chunks: List[Dict],
             context_parts.append(f"--- 参考片段 {i + 1} {source_info} ---\n{chunk['text']}")
         context_text = "\n\n".join(context_parts)
 
+    from datetime import datetime as _dt
+    _today = _dt.now().strftime("%Y年%m月%d日")
+    _cur_year = _dt.now().year
+
     # ---- 构建 system prompt ----
     system_prompt = f"""# 身份
 你是「{profile['identity']}」。
+
+## 当前日期
+今天的真实日期是 {_today}（当前年份是{_cur_year}年，不是2025年）。你的训练数据可能截止于2025年，但现在确实已经是{_cur_year}年。
+
+## 财报发布时间规律（调用 fetch_financial_report 时必须参考）
+A股财报披露时间表：
+- 年报（Q4）：次年 1月24日 ~ 4月30日陆续披露
+- 一季报（Q1）：当年 4月30日前
+- 半年报（H1）：当年 8月31日前
+- 三季报（Q3）：当年 10月31日前
+
+当前日期 {_today}，你应该智能判断最新可用的财报：
+- 不要直接用当前年份，而是根据以上时间表判断哪个报告已经发布
+- 优先获取最新的已发布报告，不指定 quarter 让系统自动选择最新可用的
+- 如果用户说“最新财报”，就不要指定 quarter，留空由系统自动查找
 
 ## 沟通风格
 {profile['tone']}
@@ -574,7 +665,14 @@ def _build_rag_prompt(query: str, context_chunks: List[Dict],
 规则：
 - 如果用户意图已经非常明确，直接回答，不需要输出交互 JSON
 - 交互 JSON 必须放在回复最末尾，且用 ```json 代码块包裹
-- items 数组最多 4 个选项"""
+- items 数组最多 4 个选项
+
+## 工具使用原则（重要）
+1. 尽量合并查询：对比多家公司时，不要对每个指标分别调用 search_vector_store，而是用一次宽泛查询获取尽可能多的信息
+2. 每家公司最多调用 search_vector_store 1-2 次，避免反复搜索
+3. fetch_financial_report 只在确认知识库中没有该公司数据时才调用
+4. 收集到足够信息后，尽快生成最终分析报告，不要继续调用工具
+5. 初始检索结果中已有的数据可以直接使用，无需再次搜索"""
 
     if context_text:
         system_prompt += f"""
@@ -629,6 +727,182 @@ def _extract_interaction_json(text: str):
     return text, None
 
 
+# ---------- Agent Tools 定义 ----------
+
+AGENT_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_vector_store",
+            "description": "在用户的向量知识库中搜索相关文档内容。当需要查找已入库的财报、年报等文档信息时调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "搜索查询词，例如：'比亚迪2024年营收'"
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "返回结果数量，默认6",
+                        "default": 6
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "fetch_financial_report",
+            "description": f"从巨潮资讯网抓取A股/港股上市公司的财报PDF，自动解析并向量化入库。调用前会先检查向量库是否已有该公司财报，已有则跳过下载。当用户提到具体公司名或股票代码、需要财报数据分析时调用。当前日期{datetime.now().strftime('%Y-%m-%d')}，请根据财报披露时间规律智能判断 year 和 quarter。不确定时不要指定 quarter，留空由系统自动查找最新可用报告。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company_name": {
+                        "type": "string",
+                        "description": "公司名称，如'比亚迪'、'贵州茅台'"
+                    },
+                    "stock_code": {
+                        "type": "string",
+                        "description": "股票代码，如'002594'、'600519'、'00700'"
+                    },
+                    "year": {
+                        "type": "integer",
+                        "description": f"财报年份。请根据当前日期({datetime.now().strftime('%Y-%m-%d')})和财报披露时间规律判断，传入最可能已发布的财报年份"
+                    },
+                    "quarter": {
+                        "type": "string",
+                        "description": "季度(Q1/Q2/Q3/Q4/H1)，不指定则自动选择最新可用报告",
+                        "enum": ["Q1", "Q2", "Q3", "Q4", "H1"]
+                    }
+                },
+                "required": ["company_name", "stock_code"]
+            }
+        }
+    },
+    {
+        "type": "builtin_function",
+        "function": {"name": "$web_search"},
+    }
+]
+
+
+async def _execute_tool(tool_name: str, tool_args: dict, user_id: int, db=None) -> str:
+    """执行 agent tool 调用，返回结果字符串"""
+
+    if tool_name == "search_vector_store":
+        query = tool_args.get("query", "")
+        top_k = tool_args.get("top_k", 6)
+        results = await retrieve(query, user_id, top_k=top_k)
+        if not results:
+            return json.dumps({"status": "empty", "message": "未找到相关文档内容。用户可能尚未上传相关财报。"}, ensure_ascii=False)
+        # 精简返回给模型
+        simplified = []
+        for r in results:
+            simplified.append({
+                "text": r["text"][:500],
+                "source": r["source"],
+                "page": r["page_number"],
+                "score": r["score"],
+                "is_table": r.get("is_table", False)
+            })
+        return json.dumps({"status": "ok", "count": len(simplified), "results": simplified}, ensure_ascii=False)
+
+    elif tool_name == "fetch_financial_report":
+        company_name = tool_args.get("company_name", "")
+        stock_code = tool_args.get("stock_code", "")
+        quarter = tool_args.get("quarter")
+
+        # 智能推断年份：如果模型没传 year，根据当前月份判断最新可用财报年份
+        if "year" in tool_args and tool_args["year"]:
+            year = tool_args["year"]
+        else:
+            now = datetime.now()
+            # 1-4月：上一年年报正在披露，优先拿上一年
+            # 5月后：当年Q1已出，但年报仍是上一年最完整的
+            year = now.year - 1 if now.month <= 4 else now.year
+
+        if not stock_code:
+            return json.dumps({"status": "error", "message": "缺少股票代码"}, ensure_ascii=False)
+
+        # 先查向量库是否已有
+        existing = list_indexed_documents(user_id)
+        for doc in existing:
+            src = doc.get("source", "")
+            if stock_code in src and str(year) in src:
+                return json.dumps({
+                    "status": "already_exists",
+                    "message": f"向量库中已有 {src}（{doc.get('count', 0)} 个向量块），无需重新下载。请直接使用 search_vector_store 检索。",
+                    "source": src,
+                    "chunks": doc.get("count", 0)
+                }, ensure_ascii=False)
+
+        # 没有则下载
+        try:
+            from services.simple_report_service import SimplifiedReportService
+            report_service = SimplifiedReportService()
+            pdf_path = await report_service.download_report_from_cninfo(
+                stock_code, company_name, year, quarter
+            )
+            await report_service.close()
+
+            if not pdf_path:
+                return json.dumps({"status": "failed", "message": f"未能从巨潮资讯网找到 {company_name}({stock_code}) {year}年的财报"}, ensure_ascii=False)
+
+            # 入库 Document 记录
+            doc_record = None
+            if db:
+                from database import Document
+                existing_doc = db.query(Document).filter(
+                    Document.user_id == user_id,
+                    Document.pdf_path == pdf_path
+                ).first()
+                if existing_doc:
+                    doc_record = existing_doc
+                    doc_record.company = company_name
+                    doc_record.stock_code = stock_code
+                    doc_record.year = year
+                else:
+                    doc_record = Document(
+                        user_id=user_id,
+                        source='cninfo',
+                        title=f"{company_name} {year}年财报",
+                        company=company_name,
+                        stock_code=stock_code,
+                        year=year,
+                        pdf_path=pdf_path
+                    )
+                    db.add(doc_record)
+                db.commit()
+                db.refresh(doc_record)
+
+            # 向量化入库
+            doc_id = doc_record.id if doc_record else None
+            ingest_result = await ingest_pdf(pdf_path, user_id, document_id=doc_id)
+
+            if ingest_result.get("status") == "error":
+                return json.dumps({"status": "error", "message": f"PDF解析入库失败: {ingest_result.get('message')}"}, ensure_ascii=False)
+
+            return json.dumps({
+                "status": "success",
+                "message": f"已成功下载并入库 {company_name}({stock_code}) {year}年财报，共 {ingest_result.get('chunks', 0)} 个向量块。现在可以使用 search_vector_store 检索其中的内容。",
+                "pdf_path": pdf_path,
+                "chunks": ingest_result.get("chunks", 0),
+                "document_id": doc_id
+            }, ensure_ascii=False)
+
+        except Exception as e:
+            traceback.print_exc()
+            return json.dumps({"status": "error", "message": f"财报抓取失败: {str(e)}"}, ensure_ascii=False)
+
+    else:
+        return json.dumps({"error": f"未知工具: {tool_name}"}, ensure_ascii=False)
+
+
+# ---------- RAG Agent 对话（流式 + function calling） ----------
+
 async def rag_chat_stream(
     query: str,
     user_id: int,
@@ -636,98 +910,275 @@ async def rag_chat_stream(
     document_ids: List[int] = None,
     style: str = "专业分析",
     user_role: str = None,
-    conversation_history: List[Dict] = None
+    conversation_history: List[Dict] = None,
+    db=None
 ):
     """
-    RAG 对话（异步生成器，yield SSE 格式字符串）。
-    支持动态身份(user_role)和结构化 JSON 交互输出。
+    RAG Agent 对话（异步生成器，yield SSE 格式字符串）。
 
-    完整流程：检索 → 构建 prompt → 流式调用 LLM → yield 文本块 → 提取交互 JSON
+    使用 Kimi k2.5 + function calling：
+    - search_vector_store: 检索向量库
+    - fetch_financial_report: 从巨潮下载财报并入库
+    - $web_search: Kimi 内置联网搜索
+
+    流程：构建 prompt → Kimi 流式对话 → 处理 tool_calls → 继续对话 → yield 文本
     """
-    # 1. 检索
+    # 1. 先检索向量库，将结果作为初始上下文
     yield f"data: {json.dumps({'type': 'phase', 'content': '正在检索相关文档...'}, ensure_ascii=False)}\n\n"
 
     chunks = await retrieve(query, user_id, top_k=top_k, document_ids=document_ids)
-    if not chunks:
-        yield f"data: {json.dumps({'type': 'text', 'text': '未找到相关文档内容。请确认已上传相关PDF文件并完成向量化。'}, ensure_ascii=False)}\n\n"
-        yield f"data: {json.dumps({'type': 'finish', 'data': {}})}\n\n"
-        yield "data: [DONE]\n\n"
-        return
 
-    # 发送检索到的来源信息
-    sources = [{"source": c["source"], "page_number": c["page_number"], "score": c["score"]} for c in chunks]
-    yield f"data: {json.dumps({'type': 'sources', 'sources': sources}, ensure_ascii=False)}\n\n"
+    if chunks:
+        sources = [{"source": c["source"], "page_number": c["page_number"], "score": c["score"]} for c in chunks]
+        yield f"data: {json.dumps({'type': 'sources', 'sources': sources}, ensure_ascii=False)}\n\n"
 
-    # 2. 构建 prompt（动态身份）
-    yield f"data: {json.dumps({'type': 'phase', 'content': 'AI 正在分析文档内容...'}, ensure_ascii=False)}\n\n"
+    # 2. 构建 prompt（带初始检索结果）
+    yield f"data: {json.dumps({'type': 'phase', 'content': 'AI 正在分析...'}, ensure_ascii=False)}\n\n"
 
-    messages = _build_rag_prompt(query, chunks, style, user_role=user_role)
+    messages = _build_rag_prompt(query, chunks, style, user_role=user_role, has_context=bool(chunks))
 
-    # 插入历史对话（如果有）
+    # 插入历史对话
     if conversation_history:
         history_messages = []
-        for h in conversation_history[-6:]:  # 最近3轮
+        for h in conversation_history[-6:]:
             if h.get("role") in ("user", "assistant"):
                 history_messages.append({"role": h["role"], "content": h["content"]})
         if history_messages:
             messages = [messages[0]] + history_messages + [messages[-1]]
 
-    # 3. 流式调用 LLM
-    api_key = DEEPSEEK_API_KEY
+    # 3. Kimi 流式对话 + function calling 循环
     full_content = ""
+    streamed_content = ""  # 实际流式发送给前端的文本
+    json_tail_buffer = ""  # 缓冲可能的 interaction JSON 尾部
+    json_intercepting = False  # 是否正在拦截 JSON 尾部
+    max_rounds = KIMI_MAX_ROUNDS
 
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            async with client.stream(
-                "POST",
-                f"{LLM_BASE_URL}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": LLM_MODEL,
-                    "messages": messages,
-                    "temperature": 0.3,
-                    "max_tokens": 4096,
-                    "stream": True
-                }
-            ) as resp:
-                if resp.status_code != 200:
-                    error_body = await resp.aread()
-                    yield f"data: {json.dumps({'type': 'error', 'error': f'LLM API 错误: {resp.status_code} - {error_body.decode()}'})}\n\n"
-                    return
+        for _round in range(max_rounds):
+            # 流式请求
+            stream = await _kimi_async_client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=messages,
+                tools=AGENT_TOOLS,
+                temperature=KIMI_TEMPERATURE,
+                max_tokens=KIMI_MAX_TOKENS,
+                stream=True,
+                extra_body={"thinking": {"type": "disabled"}},
+            )
 
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
+            # 收集 tool_calls 碎片
+            collected_tool_calls = {}
+            is_tool_call = False
+            round_content = ""
+            round_streamed = 0  # 本轮已流式输出的字符数
+
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                finish = chunk.choices[0].finish_reason
+
+                # 收集 tool_calls
+                if delta and delta.tool_calls:
+                    is_tool_call = True
+                    for tc_delta in delta.tool_calls:
+                        idx = tc_delta.index
+                        if idx not in collected_tool_calls:
+                            collected_tool_calls[idx] = {
+                                "id": tc_delta.id or "",
+                                "name": tc_delta.function.name if tc_delta.function and tc_delta.function.name else "",
+                                "arguments": "",
+                            }
+                        if tc_delta.id:
+                            collected_tool_calls[idx]["id"] = tc_delta.id
+                        if tc_delta.function:
+                            if tc_delta.function.name:
+                                collected_tool_calls[idx]["name"] = tc_delta.function.name
+                            if tc_delta.function.arguments:
+                                collected_tool_calls[idx]["arguments"] += tc_delta.function.arguments
+
+                # content delta 处理
+                if delta and delta.content:
+                    round_content += delta.content
+
+                    # 如果已检测到 tool_calls，不输出 content（中间思考）
+                    if is_tool_call:
                         continue
-                    data_str = line[6:].strip()
-                    if data_str == "[DONE]":
-                        break
+
+                    # 未检测到 tool_calls → 逐步流式输出（拦截尾部 interaction JSON）
+                    full_content += delta.content
+                    if json_intercepting:
+                        json_tail_buffer += delta.content
+                    else:
+                        pending = json_tail_buffer + delta.content
+                        json_start = -1
+                        for marker in ['```json', '{"interaction"']:
+                            pos = pending.find(marker)
+                            if pos != -1 and (json_start == -1 or pos < json_start):
+                                json_start = pos
+                        if json_start != -1:
+                            before = pending[:json_start].rstrip()
+                            if before:
+                                streamed_content += before
+                                round_streamed += len(before)
+                                yield f"data: {json.dumps({'type': 'text', 'text': before}, ensure_ascii=False)}\n\n"
+                            json_tail_buffer = pending[json_start:]
+                            json_intercepting = True
+                            yield f"data: {json.dumps({'type': 'phase', 'content': '正在生成进一步建议...'}, ensure_ascii=False)}\n\n"
+                        elif '`' in pending or '{' in pending:
+                            safe_len = max(0, len(pending) - 15)
+                            if safe_len > 0:
+                                safe_text = pending[:safe_len]
+                                streamed_content += safe_text
+                                round_streamed += len(safe_text)
+                                yield f"data: {json.dumps({'type': 'text', 'text': safe_text}, ensure_ascii=False)}\n\n"
+                                json_tail_buffer = pending[safe_len:]
+                            else:
+                                json_tail_buffer = pending
+                        else:
+                            streamed_content += pending
+                            round_streamed += len(pending)
+                            yield f"data: {json.dumps({'type': 'text', 'text': pending}, ensure_ascii=False)}\n\n"
+                            json_tail_buffer = ""
+
+            # 本轮结束后处理
+            if is_tool_call and round_content:
+                if round_streamed > 0:
+                    # 极少见：先输出了 content 后才出现 tool_calls，已无法撤回
+                    print(f"[RAG-Agent] 警告: tool_call 轮次已泄漏 {round_streamed} chars（无法撤回）")
+                else:
+                    print(f"[RAG-Agent] 跳过 tool_call 轮次中间文本 ({len(round_content)} chars)")
+
+            # 处理 tool_calls
+            if is_tool_call and collected_tool_calls:
+                tc_list = []
+                for idx in sorted(collected_tool_calls.keys()):
+                    tc = collected_tool_calls[idx]
+                    tc_list.append({
+                        "id": tc["id"],
+                        "type": "function",
+                        "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                    })
+
+                messages.append({"role": "assistant", "content": round_content or None, "tool_calls": tc_list})
+
+                for tc in tc_list:
+                    fn_name = tc["function"]["name"]
                     try:
-                        data = json.loads(data_str)
-                        delta = data.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            full_content += content
-                            yield f"data: {json.dumps({'type': 'text', 'text': content}, ensure_ascii=False)}\n\n"
+                        fn_args = json.loads(tc["function"]["arguments"])
                     except json.JSONDecodeError:
-                        continue
+                        fn_args = {}
+
+                    print(f"[RAG-Agent] Tool call round {_round+1}: {fn_name}({json.dumps(fn_args, ensure_ascii=False)})")
+
+                    # $web_search 由 Kimi 内部处理
+                    if fn_name == "$web_search":
+                        yield f"data: {json.dumps({'type': 'phase', 'content': '正在联网搜索...'}, ensure_ascii=False)}\n\n"
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc["id"],
+                            "name": fn_name,
+                            "content": json.dumps(fn_args),
+                        })
+                    else:
+                        # 自定义 tool — 发送详细 phase 事件
+                        _cn = fn_args.get('company_name', '')
+                        _yr = fn_args.get('year', datetime.now().year)
+                        _q = fn_args.get('query', '')[:30]
+
+                        if fn_name == "search_vector_store":
+                            _phase = json.dumps({'type': 'phase', 'content': '正在检索知识库: "' + _q + '"'}, ensure_ascii=False)
+                            yield f"data: {_phase}\n\n"
+                        elif fn_name == "fetch_financial_report":
+                            _phase = json.dumps({'type': 'phase', 'content': '正在检查' + _cn + str(_yr) + '年财报是否已入库...'}, ensure_ascii=False)
+                            yield f"data: {_phase}\n\n"
+                        else:
+                            yield f"data: {json.dumps({'type': 'phase', 'content': '正在处理...'}, ensure_ascii=False)}\n\n"
+
+                        tool_result = await _execute_tool(fn_name, fn_args, user_id, db=db)
+                        print(f"[RAG-Agent] Tool result: {tool_result[:200]}...")
+
+                        # 根据结果发送详细 phase
+                        try:
+                            tr = json.loads(tool_result)
+                            _st = tr.get("status", "")
+                            _chunks = tr.get("chunks", 0)
+                            _count = tr.get("count", 0)
+
+                            if fn_name == "fetch_financial_report":
+                                if _st == "already_exists":
+                                    _msg = '✓ 知识库已有' + _cn + '财报（' + str(_chunks) + '个向量块）'
+                                    yield f"data: {json.dumps({'type': 'phase', 'content': _msg}, ensure_ascii=False)}\n\n"
+                                elif _st == "success":
+                                    _msg = '✓ 已下载并入库' + _cn + '财报（' + str(_chunks) + '个向量块）'
+                                    yield f"data: {json.dumps({'type': 'phase', 'content': _msg}, ensure_ascii=False)}\n\n"
+                                    yield f"data: {json.dumps({'type': 'report_ready', 'company': _cn, 'year': _yr, 'stock_code': fn_args.get('stock_code'), 'pdf_path': tr.get('pdf_path'), 'document_id': tr.get('document_id'), 'message': tr.get('message')}, ensure_ascii=False)}\n\n"
+                                elif _st == "failed":
+                                    _msg = '✗ 未找到' + _cn + '的财报'
+                                    yield f"data: {json.dumps({'type': 'phase', 'content': _msg}, ensure_ascii=False)}\n\n"
+                            elif fn_name == "search_vector_store":
+                                if _st == "ok":
+                                    _msg = '✓ 检索到 ' + str(_count) + ' 条相关内容'
+                                    yield f"data: {json.dumps({'type': 'phase', 'content': _msg}, ensure_ascii=False)}\n\n"
+                                else:
+                                    yield f"data: {json.dumps({'type': 'phase', 'content': '✗ 知识库中未找到相关内容'}, ensure_ascii=False)}\n\n"
+                        except Exception:
+                            pass
+
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc["id"],
+                            "name": fn_name,
+                            "content": tool_result,
+                        })
+
+                yield f"data: {json.dumps({'type': 'phase', 'content': 'AI 正在整合分析结果...'}, ensure_ascii=False)}\n\n"
+                continue  # 继续下一轮对话
+
+            # 非 tool_calls → 最终回复完成
+            # 刷新缓冲区中未输出的非 JSON 文本
+            if json_tail_buffer and not json_intercepting:
+                streamed_content += json_tail_buffer
+                yield f"data: {json.dumps({'type': 'text', 'text': json_tail_buffer}, ensure_ascii=False)}\n\n"
+                json_tail_buffer = ""
+            break
+
+        # fallback: 如果轮次耗尽仍无有效文本输出给用户，强制生成最终回答
+        if not streamed_content:
+            yield f"data: {json.dumps({'type': 'phase', 'content': 'AI 正在生成最终分析报告...'}, ensure_ascii=False)}\n\n"
+            messages.append({"role": "user", "content": "请立即基于上面所有已收集到的工具调用结果，生成完整的分析报告。不要再调用任何工具。"})
+            fallback_stream = await _kimi_async_client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=messages,
+                temperature=KIMI_TEMPERATURE,
+                max_tokens=KIMI_MAX_TOKENS,
+                stream=True,
+                extra_body={"thinking": {"type": "disabled"}},
+            )
+            async for chunk in fallback_stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                if delta and delta.content:
+                    full_content += delta.content
+                    streamed_content += delta.content
+                    yield f"data: {json.dumps({'type': 'text', 'text': delta.content}, ensure_ascii=False)}\n\n"
 
     except Exception as e:
         traceback.print_exc()
-        yield f"data: {json.dumps({'type': 'error', 'error': f'RAG 生成失败: {str(e)}'})}\n\n"
+        yield f"data: {json.dumps({'type': 'error', 'error': f'RAG Agent 生成失败: {str(e)}'})}\n\n"
+        yield "data: [DONE]\n\n"
         return
 
-    # 4. 后处理：提取结构化交互 JSON
+    # 4. 后处理：从 full_content 提取结构化交互 JSON（不流式输出）
     _, interaction = _extract_interaction_json(full_content)
     if interaction:
         yield f"data: {json.dumps({'type': 'interaction', 'interaction': interaction}, ensure_ascii=False)}\n\n"
 
     # 5. 完成
-    yield f"data: {json.dumps({'type': 'finish', 'data': {'total_length': len(full_content)}})}\n\n"
+    yield f"data: {json.dumps({'type': 'finish', 'data': {'total_length': len(streamed_content)}})}\n\n"
     yield "data: [DONE]\n\n"
-    print(f"[RAG] 对话完成, 输出 {len(full_content)} 字符, 引用 {len(chunks)} 个文档块, 角色: {user_role or 'default'}")
+    print(f"[RAG-Agent] 对话完成, 输出 {len(streamed_content)} 字符(full={len(full_content)}), 初始引用 {len(chunks)} 个文档块, 角色: {user_role or 'default'}")
 
 
 # ---------- 文档管理 ----------
@@ -770,5 +1221,31 @@ def list_indexed_documents(user_id: int) -> List[Dict]:
             [{"source": s, "count": c} for s, c in source_counts.items()],
             key=lambda x: x["source"]
         )
+    except Exception:
+        return []
+
+
+def get_document_chunks(user_id: int, source_name: str, limit: Optional[int] = None) -> List[Dict]:
+    try:
+        collection = _get_collection(user_id)
+        result = collection.get(where={"source": source_name}, include=["documents", "metadatas"])
+        documents = result.get("documents") or []
+        metadatas = result.get("metadatas") or []
+
+        chunks = []
+        for doc, meta in zip(documents, metadatas):
+            chunks.append({
+                "text": doc,
+                "source": meta.get("source", source_name),
+                "page_number": meta.get("page_number", 0),
+                "chunk_index": meta.get("chunk_index", 0),
+                "is_table": meta.get("is_table", False),
+                "document_id": meta.get("document_id")
+            })
+
+        chunks.sort(key=lambda item: (item["page_number"], item["chunk_index"]))
+        if limit is not None and limit > 0:
+            return chunks[:limit]
+        return chunks
     except Exception:
         return []

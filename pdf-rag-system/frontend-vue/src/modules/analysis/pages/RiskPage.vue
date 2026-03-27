@@ -48,15 +48,24 @@
       </div>
 
       <!-- Loading -->
-      <div v-if="loading" class="flex items-center justify-center h-full">
+      <div v-if="loading" class="flex flex-col items-center justify-center h-full">
         <div class="text-center">
           <Loader2 class="w-8 h-8 animate-spin text-rose-500 mx-auto" />
           <p class="text-xs text-gray-500 mt-3">AI 正在量化风险因子...</p>
+        </div>
+        <div v-if="streamText" class="mt-4 max-w-2xl w-full bg-gray-50 border border-gray-100 rounded-xl p-4 max-h-48 overflow-y-auto">
+          <p class="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">实时生成中</p>
+          <pre class="text-[11px] text-gray-600 whitespace-pre-wrap font-mono leading-relaxed">{{ streamText.slice(-800) }}</pre>
         </div>
       </div>
 
       <!-- Results -->
       <div v-if="result && !loading" class="max-w-5xl mx-auto space-y-5">
+        <!-- Demo Banner -->
+        <div v-if="isDemo" class="bg-rose-50 border border-rose-200 rounded-xl px-4 py-2.5 flex items-center justify-between">
+          <p class="text-[11px] text-rose-600"><span class="font-bold">示例数据</span> — 当前展示的是恒大地产风险评估示例，输入公司名称可获取实时分析</p>
+          <button @click="clearDemo" class="text-[10px] text-rose-500 hover:text-rose-700 font-medium">清除示例</button>
+        </div>
         <!-- Overall Score -->
         <div class="grid grid-cols-4 gap-4">
           <div class="col-span-1 bg-white border border-gray-100 rounded-xl p-5 shadow-sm flex flex-col items-center justify-center">
@@ -119,47 +128,39 @@
           <p class="text-xs text-gray-300 leading-relaxed">{{ result.aiSummary }}</p>
         </div>
       </div>
+
+      <!-- Error -->
+      <div v-if="error" class="max-w-5xl mx-auto mt-4 bg-red-50 border border-red-100 rounded-xl p-4 text-xs text-red-600">{{ error }}</div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import * as echarts from 'echarts'
 import { ShieldAlert, Search, Loader2, Sparkles, AlertTriangle } from 'lucide-vue-next'
+import { useSSE } from '../../../composables/useSSE'
+import { EXAMPLE_RISK } from '../../../composables/exampleData'
 
 const companyInput = ref('')
-const loading = ref(false)
-const result = ref(null)
 const gaugeRef = ref(null)
+const isDemo = ref(false)
+let gaugeChart = null
 const examples = ['贵州茅台', '比亚迪', '恒大地产', '招商银行']
+const { loading, error, streamText, result, fetchSSE } = useSSE()
 
-const mockResult = (company) => ({
-  overallScore: 35,
-  riskLevel: '风险可控',
-  categories: [
-    { name: '财务造假风险', score: 22, detail: 'Beneish M-Score为-2.8，低于阈值-1.78，财务造假概率极低' },
-    { name: '偿债能力风险', score: 38, detail: '流动比率2.1，速动比率1.6，短期偿债能力良好' },
-    { name: '经营持续风险', score: 28, detail: '经营现金流连续5年为正，营收复合增长率15.2%，经营稳健' },
-    { name: '市场情绪风险', score: 45, detail: '近期负面舆情较少，但行业竞争加剧，市场关注度上升' },
-    { name: '估值泡沫风险', score: 52, detail: '当前P/E为32.5x，高于行业均值25.1x，存在一定估值压力' },
-    { name: '治理结构风险', score: 18, detail: '独立董事占比超50%，股权结构清晰，关联交易占比低' }
-  ],
-  factors: [
-    { name: '估值偏高', desc: 'P/E高于行业均值29.5%，PB高于行业均值45.2%', level: 'medium' },
-    { name: '行业竞争加剧', desc: '近半年行业新进入者增加，市场份额面临挤压', level: 'medium' },
-    { name: '原材料价格波动', desc: '主要原材料价格近3月波动幅度达12.3%', level: 'low' },
-    { name: '现金流充裕', desc: '经营现金流/净利润比率达1.35，现金质量优秀', level: 'low' },
-    { name: '负债率健康', desc: '资产负债率21.3%，远低于行业均值45.6%', level: 'low' }
-  ],
-  aiSummary: `${company}整体风险评分35分（满分100，越低越安全），处于"风险可控"区间。主要关注点为估值偏高和行业竞争加剧，但公司财务基本面稳健、偿债能力充足、治理结构良好。建议关注估值回调机会，当前阶段不建议追高，可在P/E回落至28x以下时择机布局。`
+onMounted(() => {
+  result.value = EXAMPLE_RISK
+  isDemo.value = true
+  nextTick(() => initGauge(EXAMPLE_RISK.overallScore))
 })
 
 const initGauge = (score) => {
   nextTick(() => {
     if (!gaugeRef.value) return
-    const chart = echarts.init(gaugeRef.value)
-    chart.setOption({
+    if (gaugeChart) gaugeChart.dispose()
+    gaugeChart = echarts.init(gaugeRef.value)
+    gaugeChart.setOption({
       series: [{
         type: 'gauge', startAngle: 200, endAngle: -20, min: 0, max: 100,
         progress: { show: true, width: 14, roundCap: true, itemStyle: { color: score > 70 ? '#f43f5e' : score > 40 ? '#f59e0b' : '#10b981' } },
@@ -173,20 +174,19 @@ const initGauge = (score) => {
   })
 }
 
-const runRiskCheck = async () => {
+const clearDemo = () => { result.value = null; isDemo.value = false }
+
+const runRiskCheck = () => {
   if (!companyInput.value.trim()) return
-  loading.value = true
-  result.value = null
-  try {
-    await new Promise(r => setTimeout(r, 1200))
-    result.value = mockResult(companyInput.value.trim())
-    initGauge(result.value.overallScore)
-  } catch (e) {
-    console.error(e)
-  } finally {
-    loading.value = false
-  }
+  isDemo.value = false
+  fetchSSE('/api/diagnosis/risk', { company: companyInput.value.trim() }, {
+    onDone: (data) => { initGauge(data.overallScore) }
+  })
 }
+
+onBeforeUnmount(() => {
+  gaugeChart?.dispose()
+})
 </script>
 
 <style scoped>

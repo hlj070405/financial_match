@@ -1,5 +1,6 @@
 const BASE_URL = '/api/tushare'
 const WATCHLIST_URL = '/api/watchlist'
+const REQUEST_TIMEOUT_MS = 12000
 
 function getHeaders() {
   const token = localStorage.getItem('access_token')
@@ -15,9 +16,25 @@ async function request(path, params = {}) {
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join('&')
   const url = `${BASE_URL}${path}${qs ? '?' + qs : ''}`
-  const res = await fetch(url, { headers: getHeaders() })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
-  return res.json()
+
+  let lastError = null
+  for (let i = 0; i < 2; i += 1) {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS)
+    try {
+      const res = await fetch(url, { headers: getHeaders(), signal: ctrl.signal })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return await res.json()
+    } catch (err) {
+      lastError = err
+      if (i === 1) break
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  const msg = lastError?.name === 'AbortError' ? 'Request timeout' : (lastError?.message || 'Request failed')
+  throw new Error(msg)
 }
 
 export const tushareApi = {

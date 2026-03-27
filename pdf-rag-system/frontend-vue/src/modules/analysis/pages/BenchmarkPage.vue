@@ -54,15 +54,24 @@
       </div>
 
       <!-- Loading -->
-      <div v-if="loading" class="flex items-center justify-center h-full">
+      <div v-if="loading" class="flex flex-col items-center justify-center h-full">
         <div class="text-center">
           <Loader2 class="w-8 h-8 animate-spin text-emerald-500 mx-auto" />
           <p class="text-xs text-gray-500 mt-3">AI 正在多维度对标分析...</p>
+        </div>
+        <div v-if="streamText" class="mt-4 max-w-2xl w-full bg-gray-50 border border-gray-100 rounded-xl p-4 max-h-48 overflow-y-auto">
+          <p class="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">实时生成中</p>
+          <pre class="text-[11px] text-gray-600 whitespace-pre-wrap font-mono leading-relaxed">{{ streamText.slice(-800) }}</pre>
         </div>
       </div>
 
       <!-- Results -->
       <div v-if="result && !loading" class="max-w-5xl mx-auto space-y-5">
+        <!-- Demo Banner -->
+        <div v-if="isDemo" class="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5 flex items-center justify-between">
+          <p class="text-[11px] text-emerald-600"><span class="font-bold">示例数据</span> — 当前展示的是比亚迪 vs 长城汽车对标示例，输入公司名称可获取实时分析</p>
+          <button @click="clearDemo" class="text-[10px] text-emerald-500 hover:text-emerald-700 font-medium">清除示例</button>
+        </div>
         <!-- Summary -->
         <div class="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-xl p-5 text-white">
           <div class="flex items-center gap-2 mb-2">
@@ -72,7 +81,7 @@
           <p class="text-sm leading-relaxed">{{ result.summary }}</p>
         </div>
 
-        <!-- Radar Chart -->
+        <!-- Charts -->
         <div class="grid grid-cols-2 gap-5">
           <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
             <h3 class="text-xs font-bold text-gray-800 flex items-center gap-2 mb-3">
@@ -82,9 +91,9 @@
           </div>
           <div class="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
             <h3 class="text-xs font-bold text-gray-800 flex items-center gap-2 mb-3">
-              <BarChart3 class="w-4 h-4 text-blue-500" /> 核心指标对比
+              <TrendingUp class="w-4 h-4 text-blue-500" /> 营收趋势对比
             </h3>
-            <div ref="barRef" class="w-full h-56"></div>
+            <div ref="trendRef" class="w-full h-56"></div>
           </div>
         </div>
 
@@ -116,99 +125,102 @@
           </table>
         </div>
       </div>
+
+      <!-- Error -->
+      <div v-if="error" class="max-w-5xl mx-auto mt-4 bg-red-50 border border-red-100 rounded-xl p-4 text-xs text-red-600">{{ error }}</div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import * as echarts from 'echarts'
-import { Scale, ArrowRightLeft, Loader2, Sparkles, Radar, BarChart3 } from 'lucide-vue-next'
+import { Scale, ArrowRightLeft, Loader2, Sparkles, Radar, TrendingUp } from 'lucide-vue-next'
+import { useSSE } from '../../../composables/useSSE'
+import { EXAMPLE_BENCHMARK } from '../../../composables/exampleData'
 
 const companyA = ref('')
 const companyB = ref('')
-const loading = ref(false)
-const result = ref(null)
 const radarRef = ref(null)
-const barRef = ref(null)
+const trendRef = ref(null)
+const isDemo = ref(false)
+let radarChart = null
+let trendChart = null
 
+const { loading, error, streamText, result, fetchSSE } = useSSE()
 const examplePairs = [['贵州茅台', '五粮液'], ['比亚迪', '长城汽车'], ['招商银行', '兴业银行'], ['宁德时代', '亿纬锂能']]
 
-const mockResult = (a, b) => ({
-  companyA: a, companyB: b,
-  summary: `${a}在盈利能力和品牌溢价方面表现突出，ROE达到28.5%，显著高于${b}的18.2%。但${b}在营收增速和市场扩张方面更具优势，近三年复合增长率达到22.3%。综合来看，${a}更适合价值投资者，${b}更适合成长型投资者。`,
-  metrics: [
-    { name: 'ROE (净资产收益率)', valueA: '28.5%', valueB: '18.2%', winner: 'A' },
-    { name: '毛利率', valueA: '91.5%', valueB: '75.3%', winner: 'A' },
-    { name: '营收增速(YoY)', valueA: '15.7%', valueB: '22.3%', winner: 'B' },
-    { name: '净利润率', valueA: '52.1%', valueB: '33.4%', winner: 'A' },
-    { name: 'P/E 估值', valueA: '32.5x', valueB: '25.8x', winner: 'B' },
-    { name: '资产负债率', valueA: '21.3%', valueB: '38.7%', winner: 'A' },
-    { name: '经营现金流/营收', valueA: '45.2%', valueB: '28.6%', winner: 'A' },
-    { name: '研发投入占比', valueA: '2.8%', valueB: '5.1%', winner: 'B' }
-  ],
-  radarA: [90, 85, 60, 95, 70, 88],
-  radarB: [65, 72, 85, 70, 82, 60]
+onMounted(() => {
+  result.value = EXAMPLE_BENCHMARK
+  isDemo.value = true
+  nextTick(() => initCharts(EXAMPLE_BENCHMARK))
 })
 
 const initCharts = (data) => {
   nextTick(() => {
     if (radarRef.value) {
-      const radar = echarts.init(radarRef.value)
-      radar.setOption({
+      if (radarChart) radarChart.dispose()
+      radarChart = echarts.init(radarRef.value)
+      const labels = data.radarLabels || ['盈利能力', '成长能力', '估值水平', '运营效率', '财务健康', '市场地位']
+      radarChart.setOption({
+        tooltip: { backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', borderWidth: 1, textStyle: { color: '#1f2937', fontSize: 11 } },
         legend: { data: [data.companyA, data.companyB], bottom: 0, textStyle: { fontSize: 11 } },
         radar: {
-          indicator: [
-            { name: '盈利能力', max: 100 }, { name: '成长性', max: 100 },
-            { name: '估值吸引', max: 100 }, { name: '财务安全', max: 100 },
-            { name: '市场地位', max: 100 }, { name: '运营效率', max: 100 }
-          ],
+          indicator: labels.map(n => ({ name: n, max: 100 })),
           shape: 'polygon',
-          splitArea: { show: true, areaStyle: { color: ['#f0fdf4', '#dcfce7', '#bbf7d0', '#86efac'].reverse() } },
+          radius: '60%',
+          splitArea: { show: true, areaStyle: { color: ['#f9fafb', '#fff'] } },
+          axisLine: { lineStyle: { color: '#e5e7eb' } },
+          splitLine: { lineStyle: { color: '#e5e7eb' } },
           axisName: { color: '#6b7280', fontSize: 10 }
         },
         series: [{
           type: 'radar',
           data: [
-            { value: data.radarA, name: data.companyA, areaStyle: { color: 'rgba(16,185,129,0.15)' }, lineStyle: { color: '#10b981', width: 2 }, itemStyle: { color: '#10b981' } },
-            { value: data.radarB, name: data.companyB, areaStyle: { color: 'rgba(59,130,246,0.15)' }, lineStyle: { color: '#3b82f6', width: 2 }, itemStyle: { color: '#3b82f6' } }
+            { value: data.radarA, name: data.companyA, areaStyle: { color: 'rgba(16,185,129,0.15)' }, lineStyle: { color: '#10b981', width: 2 }, itemStyle: { color: '#10b981' }, symbol: 'circle', symbolSize: 5 },
+            { value: data.radarB, name: data.companyB, areaStyle: { color: 'rgba(59,130,246,0.15)' }, lineStyle: { color: '#3b82f6', width: 2 }, itemStyle: { color: '#3b82f6' }, symbol: 'circle', symbolSize: 5 }
           ]
         }]
       })
     }
-    if (barRef.value) {
-      const bar = echarts.init(barRef.value)
-      const names = data.metrics.slice(0, 5).map(m => m.name.split('(')[0].trim())
-      bar.setOption({
-        tooltip: { trigger: 'axis', textStyle: { fontSize: 11 } },
+    if (trendRef.value && data.trend) {
+      if (trendChart) trendChart.dispose()
+      trendChart = echarts.init(trendRef.value)
+      trendChart.setOption({
+        tooltip: { trigger: 'axis', textStyle: { fontSize: 11 }, backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#e5e7eb', borderWidth: 1 },
         legend: { data: [data.companyA, data.companyB], bottom: 0, textStyle: { fontSize: 11 } },
         grid: { top: 10, bottom: 40, left: 10, right: 10, containLabel: true },
-        xAxis: { type: 'category', data: names, axisLabel: { fontSize: 10, interval: 0, rotate: 15 } },
-        yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+        xAxis: { type: 'category', data: data.trend.years, axisLabel: { fontSize: 10 }, axisLine: { lineStyle: { color: '#e5e7eb' } }, axisTick: { show: false } },
+        yAxis: { type: 'value', axisLabel: { fontSize: 10 }, splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } }, axisLine: { show: false } },
         series: [
-          { name: data.companyA, type: 'bar', data: [28.5, 91.5, 15.7, 52.1, 32.5], itemStyle: { color: '#10b981', borderRadius: [4, 4, 0, 0] }, barWidth: 20 },
-          { name: data.companyB, type: 'bar', data: [18.2, 75.3, 22.3, 33.4, 25.8], itemStyle: { color: '#3b82f6', borderRadius: [4, 4, 0, 0] }, barWidth: 20 }
+          { name: data.companyA, type: 'line', data: data.trend.seriesA, smooth: true, symbol: 'circle', symbolSize: 6, lineStyle: { color: '#10b981', width: 2.5 }, itemStyle: { color: '#10b981' }, areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(16,185,129,0.15)' }, { offset: 1, color: 'rgba(16,185,129,0)' }]) } },
+          { name: data.companyB, type: 'line', data: data.trend.seriesB, smooth: true, symbol: 'circle', symbolSize: 6, lineStyle: { color: '#3b82f6', width: 2.5 }, itemStyle: { color: '#3b82f6' }, areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(59,130,246,0.15)' }, { offset: 1, color: 'rgba(59,130,246,0)' }]) } }
         ]
       })
     }
   })
 }
 
-const runBenchmark = async () => {
+const handleResize = () => { radarChart?.resize(); trendChart?.resize() }
+
+const clearDemo = () => { result.value = null; isDemo.value = false }
+
+const runBenchmark = () => {
   if (!companyA.value.trim() || !companyB.value.trim()) return
-  loading.value = true
-  result.value = null
-  try {
-    // TODO: Replace with real API call
-    await new Promise(r => setTimeout(r, 1500))
-    result.value = mockResult(companyA.value.trim(), companyB.value.trim())
-    initCharts(result.value)
-  } catch (e) {
-    console.error(e)
-  } finally {
-    loading.value = false
-  }
+  isDemo.value = false
+  fetchSSE('/api/diagnosis/benchmark', { companyA: companyA.value.trim(), companyB: companyB.value.trim() }, {
+    onDone: (data) => {
+      initCharts(data)
+      window.addEventListener('resize', handleResize)
+    }
+  })
 }
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
+  radarChart?.dispose()
+  trendChart?.dispose()
+})
 </script>
 
 <style scoped>

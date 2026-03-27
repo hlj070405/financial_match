@@ -2,13 +2,14 @@ import httpx
 import json
 import asyncio
 from typing import Optional
+from config import SILICONFLOW_BASE_URL, SILICONFLOW_MODEL, SILICONFLOW_TEMPERATURE
 
 class DeepSeekService:
     """DeepSeek API服务 - 通过硅基流动调用"""
     
     def __init__(self, api_key: str):
         self.api_key = api_key
-        self.base_url = "https://api.siliconflow.cn/v1"
+        self.base_url = SILICONFLOW_BASE_URL
         
     async def generate_chat_title(self, first_message: str, first_response: str = "") -> str:
         """
@@ -34,7 +35,7 @@ class DeepSeekService:
                         "Content-Type": "application/json"
                     },
                     json={
-                        "model": "Qwen/Qwen2.5-72B-Instruct",
+                        "model": SILICONFLOW_MODEL,
                         "messages": [
                             {
                                 "role": "system",
@@ -45,7 +46,7 @@ class DeepSeekService:
                                 "content": prompt
                             }
                         ],
-                        "temperature": 0.7,
+                        "temperature": SILICONFLOW_TEMPERATURE,
                         "max_tokens": 50
                     }
                 )
@@ -69,7 +70,7 @@ class DeepSeekService:
             # 返回默认标题
             return first_message[:20] if len(first_message) > 20 else first_message
     
-    async def chat(self, prompt: str, temperature: float = 0.7, max_tokens: int = 2000, max_retries: int = 3) -> str:
+    async def chat(self, prompt: str, temperature: float = None, max_tokens: int = 2000, max_retries: int = 3) -> str:
         """
         通用的聊天接口（含重试）
         
@@ -92,14 +93,14 @@ class DeepSeekService:
                             "Content-Type": "application/json"
                         },
                         json={
-                            "model": "Qwen/Qwen2.5-72B-Instruct",
+                            "model": SILICONFLOW_MODEL,
                             "messages": [
                                 {
                                     "role": "user",
                                     "content": prompt
                                 }
                             ],
-                            "temperature": temperature,
+                            "temperature": temperature if temperature is not None else SILICONFLOW_TEMPERATURE,
                             "max_tokens": max_tokens
                         }
                     )

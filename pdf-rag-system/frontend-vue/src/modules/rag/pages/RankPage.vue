@@ -119,10 +119,10 @@
         <div class="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
           <h4 class="text-[11px] font-bold text-gray-700 mb-3">检索统计</h4>
           <div class="space-y-2 text-[11px]">
-            <div class="flex justify-between"><span class="text-gray-500">索引文档数</span><span class="font-mono text-gray-800">2,847</span></div>
-            <div class="flex justify-between"><span class="text-gray-500">向量总数</span><span class="font-mono text-gray-800">18,523</span></div>
-            <div class="flex justify-between"><span class="text-gray-500">平均检索延迟</span><span class="font-mono text-purple-600">23ms</span></div>
-            <div class="flex justify-between"><span class="text-gray-500">召回率@10</span><span class="font-mono text-emerald-600">94.2%</span></div>
+            <div class="flex justify-between"><span class="text-gray-500">索引文档数</span><span class="font-mono text-gray-800">{{ rankStats.documentCount }}</span></div>
+            <div class="flex justify-between"><span class="text-gray-500">向量总数</span><span class="font-mono text-gray-800">{{ rankStats.totalChunks }}</span></div>
+            <div class="flex justify-between"><span class="text-gray-500">最近检索延迟</span><span class="font-mono text-purple-600">{{ rankStats.lastLatency }}</span></div>
+            <div class="flex justify-between"><span class="text-gray-500">返回结果数</span><span class="font-mono text-emerald-600">{{ rankStats.resultCount }}</span></div>
           </div>
         </div>
 
@@ -136,7 +136,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { ArrowUpDown, Zap, Loader2, Atom, Settings } from 'lucide-vue-next'
 
@@ -145,38 +145,56 @@ const loading = ref(false)
 const topK = ref(10)
 const scatterRef = ref(null)
 const histRef = ref(null)
+const scatterChart = ref(null)
+const histChart = ref(null)
+const totalChunks = ref(0)
+const documentCount = ref(0)
+const lastLatency = ref(0)
 
-const rankResults = ref([
-  { title: '比亚迪2023年年报 - 盈利能力分析', source: '年报.pdf', chunk: 'chunk_042', cosine: 0.956, latency: 18 },
-  { title: '新能源汽车行业毛利率对比', source: '行业研究.pdf', chunk: 'chunk_015', cosine: 0.923, latency: 21 },
-  { title: '动力电池成本结构分析', source: '电池报告.pdf', chunk: 'chunk_088', cosine: 0.891, latency: 19 },
-  { title: '整车企业财务指标汇总表', source: '数据汇总.xlsx', chunk: 'chunk_003', cosine: 0.867, latency: 22 },
-  { title: '碳酸锂价格与电池成本关系', source: '供应链.pdf', chunk: 'chunk_051', cosine: 0.845, latency: 20 },
-  { title: '特斯拉 vs 比亚迪盈利模式', source: '竞争分析.pdf', chunk: 'chunk_027', cosine: 0.812, latency: 24 },
-  { title: '新能源补贴退坡影响评估', source: '政策分析.pdf', chunk: 'chunk_064', cosine: 0.778, latency: 23 },
-  { title: '光伏与新能源车协同效应', source: '跨行业.pdf', chunk: 'chunk_012', cosine: 0.734, latency: 26 }
-])
+const rankResults = ref([])
+
+const rankStats = computed(() => ({
+  documentCount: documentCount.value,
+  totalChunks: totalChunks.value,
+  lastLatency: `${lastLatency.value}ms`,
+  resultCount: rankResults.value.length
+}))
+
+const buildScatterData = () => {
+  const points = rankResults.value.map((item, index) => ([
+    (index % 4) * 1.6 + item.cosine * 2,
+    Math.floor(index / 4) * 1.25 + (1 - item.cosine) * 4,
+    12 + item.cosine * 18,
+    1,
+    item.title
+  ]))
+  points.push([1.5, 1.2, 28, 2, '查询向量'])
+  return points
+}
+
+const buildHistogram = () => {
+  const bins = [0, 0, 0, 0, 0]
+  rankResults.value.forEach((item) => {
+    const score = item.cosine
+    if (score < 0.6) bins[0] += 1
+    else if (score < 0.7) bins[1] += 1
+    else if (score < 0.8) bins[2] += 1
+    else if (score < 0.9) bins[3] += 1
+    else bins[4] += 1
+  })
+  return bins
+}
 
 const initScatter = () => {
   if (!scatterRef.value) return
-  const chart = echarts.init(scatterRef.value)
-  const data = []
-  for (let i = 0; i < 80; i++) {
-    data.push([
-      (Math.random() - 0.5) * 10 + (i < 8 ? 3 : 0),
-      (Math.random() - 0.5) * 10 + (i < 8 ? 2 : 0),
-      i < 8 ? 20 : 8,
-      i < 8 ? 1 : 0
-    ])
-  }
-  data.push([3, 2, 30, 2]) // query point
-  chart.setOption({
-    tooltip: { textStyle: { fontSize: 10 }, formatter: p => p.data[3] === 2 ? '查询向量' : p.data[3] === 1 ? `匹配结果 (Top ${rankResults.value.length})` : '文档向量' },
+  scatterChart.value = scatterChart.value || echarts.init(scatterRef.value)
+  scatterChart.value.setOption({
+    tooltip: { textStyle: { fontSize: 10 }, formatter: p => p.data[3] === 2 ? '查询向量' : p.data[4] || `匹配结果 (Top ${rankResults.value.length})` },
     grid: { top: 10, bottom: 25, left: 30, right: 10 },
     xAxis: { axisLabel: { fontSize: 9 }, splitLine: { lineStyle: { color: '#f3f4f6' } } },
     yAxis: { axisLabel: { fontSize: 9 }, splitLine: { lineStyle: { color: '#f3f4f6' } } },
     series: [{
-      type: 'scatter', data,
+      type: 'scatter', data: buildScatterData(),
       symbolSize: d => d[2],
       itemStyle: { color: d => d[3] === 2 ? '#ef4444' : d[3] === 1 ? '#8b5cf6' : '#d1d5db', opacity: d => d[3] === 0 ? 0.4 : 0.9 }
     }]
@@ -185,29 +203,87 @@ const initScatter = () => {
 
 const initHist = () => {
   if (!histRef.value) return
-  const chart = echarts.init(histRef.value)
-  chart.setOption({
+  histChart.value = histChart.value || echarts.init(histRef.value)
+  histChart.value.setOption({
     grid: { top: 5, bottom: 20, left: 5, right: 5, containLabel: false },
     xAxis: { type: 'category', data: ['0.5-0.6', '0.6-0.7', '0.7-0.8', '0.8-0.9', '0.9-1.0'], axisLabel: { fontSize: 8 }, axisLine: { show: false }, axisTick: { show: false } },
     yAxis: { show: false },
-    series: [{ type: 'bar', data: [
-      { value: 3, itemStyle: { color: '#d1d5db', borderRadius: [3, 3, 0, 0] } },
-      { value: 8, itemStyle: { color: '#a5b4fc', borderRadius: [3, 3, 0, 0] } },
-      { value: 12, itemStyle: { color: '#818cf8', borderRadius: [3, 3, 0, 0] } },
-      { value: 5, itemStyle: { color: '#7c3aed', borderRadius: [3, 3, 0, 0] } },
-      { value: 2, itemStyle: { color: '#6d28d9', borderRadius: [3, 3, 0, 0] } }
-    ], barWidth: '55%' }]
+    series: [{
+      type: 'bar',
+      data: buildHistogram().map((value, index) => ({
+        value,
+        itemStyle: {
+          color: ['#d1d5db', '#a5b4fc', '#818cf8', '#7c3aed', '#6d28d9'][index],
+          borderRadius: [3, 3, 0, 0]
+        }
+      })),
+      barWidth: '55%'
+    }]
   })
+}
+
+const loadRankStats = async () => {
+  try {
+    const token = localStorage.getItem('access_token')
+    const [statsResp, indexedResp] = await Promise.all([
+      fetch('/api/rag/stats', { headers: { 'Authorization': `Bearer ${token}` } }),
+      fetch('/api/rag/indexed', { headers: { 'Authorization': `Bearer ${token}` } })
+    ])
+    const statsData = await statsResp.json()
+    const indexedData = await indexedResp.json()
+    totalChunks.value = statsData.total_chunks || 0
+    documentCount.value = (indexedData.sources || []).length
+  } catch (error) {
+    console.error('加载排序页统计失败', error)
+  }
 }
 
 const runRank = async () => {
   if (!queryText.value.trim()) return
   loading.value = true
-  await new Promise(r => setTimeout(r, 600))
-  loading.value = false
+  try {
+    const token = localStorage.getItem('access_token')
+    const resp = await fetch('/api/rag/search', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: queryText.value.trim(),
+        top_k: topK.value,
+        score_threshold: 0,
+        sort_by: 'score_desc'
+      })
+    })
+    const data = await resp.json()
+    if (!resp.ok) {
+      throw new Error(data.detail || '向量检索失败')
+    }
+    lastLatency.value = data.elapsed_ms || 0
+    rankResults.value = (data.results || []).map((item) => ({
+      title: `${item.source} · 第${item.page_number}页`,
+      source: item.source,
+      chunk: `chunk_${String(item.chunk_index).padStart(3, '0')}`,
+      cosine: Number(item.score || 0),
+      latency: data.elapsed_ms || 0
+    }))
+    await nextTick()
+    initScatter()
+    initHist()
+  } catch (error) {
+    console.error('向量排序检索失败', error)
+    rankResults.value = []
+    lastLatency.value = 0
+    await nextTick()
+    initScatter()
+    initHist()
+  } finally {
+    loading.value = false
+  }
 }
 
-onMounted(() => { nextTick(() => { initScatter(); initHist() }) })
+onMounted(() => {
+  loadRankStats()
+  nextTick(() => { initScatter(); initHist() })
+})
 </script>
 
 <style scoped>
