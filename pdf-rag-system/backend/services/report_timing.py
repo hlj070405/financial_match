@@ -148,11 +148,39 @@ class ReportTimingService:
         Returns:
             最佳报告信息
         """
+        current_year = (target_date or datetime.now()).year
+        
+        # 如果用户指定了年份，优先返回用户指定的报告类型
+        if user_year:
+            # 确定报告类型
+            if user_quarter:
+                quarter_map = {
+                    "Q1": ReportType.Q1,
+                    "Q2": ReportType.SEMI_ANNUAL,  # Q2用中报代替
+                    "H1": ReportType.SEMI_ANNUAL,
+                    "Q3": ReportType.Q3,
+                    "Q4": ReportType.ANNUAL,  # Q4用年报代替
+                    "FY": ReportType.ANNUAL,
+                }
+                report_type = quarter_map.get(user_quarter.upper(), ReportType.ANNUAL)
+            else:
+                report_type = ReportType.ANNUAL  # 默认年报
+            
+            # 直接返回用户指定的报告信息，不受当前时间限制
+            return {
+                "type": report_type,
+                "year": user_year,
+                "quarter": user_quarter or "FY",
+                "period": f"{user_year}{user_quarter or ''}",
+                "priority": 1,
+                "description": f"{user_year}年{ReportTimingService.REPORT_NAME_MAP[report_type]}"
+            }
+        
+        # 如果用户没有指定年份，使用原来的逻辑
         available = ReportTimingService.get_available_reports(target_date)
         
         if not available:
             # 降级：返回去年年报
-            current_year = (target_date or datetime.now()).year
             return {
                 "type": ReportType.ANNUAL,
                 "year": current_year - 1,
@@ -161,29 +189,6 @@ class ReportTimingService:
                 "priority": 99,
                 "description": f"{current_year - 1}年年报（降级）"
             }
-        
-        # 如果用户指定了年份和季度
-        if user_year and user_quarter:
-            quarter_map = {
-                "Q1": ReportType.Q1,
-                "Q2": ReportType.SEMI_ANNUAL,  # Q2用中报代替
-                "H1": ReportType.SEMI_ANNUAL,
-                "Q3": ReportType.Q3,
-                "Q4": ReportType.ANNUAL,  # Q4用年报代替
-                "FY": ReportType.ANNUAL,
-            }
-            target_type = quarter_map.get(user_quarter.upper())
-            
-            for report in available:
-                if report["year"] == user_year and report["type"] == target_type:
-                    return report
-        
-        # 如果用户只指定了年份
-        if user_year:
-            # 优先返回该年份的最新报告
-            for report in available:
-                if report["year"] == user_year:
-                    return report
         
         # 返回最新的可用报告
         return available[0]

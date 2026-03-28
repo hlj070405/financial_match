@@ -65,8 +65,9 @@ async def test_query(stock_code, year, use_stock_param=True):
         
         if response.status_code == 200:
             result = response.json()
+            print(f"响应数据: {json.dumps(result, ensure_ascii=False, indent=2)[:500]}...")
             announcements = result.get('announcements', [])
-            print(f"找到公告数量: {len(announcements)}")
+            print(f"找到公告数量: {len(announcements) if announcements else 'None'}")
             
             if announcements:
                 print(f"\n前3条公告:")
@@ -86,15 +87,22 @@ async def test_query(stock_code, year, use_stock_param=True):
         await client.aclose()
 
 async def main():
-    # 测试平安银行 000001
-    stock_code = "000001"
-    year = 2023
+    # 测试平安银行 000001 和 比亚迪 002594
+    test_cases = [
+        ("000001", 2023, "平安银行"),
+        ("002594", 2023, "比亚迪")
+    ]
     
-    # 测试使用 stock 参数
-    await test_query(stock_code, year, use_stock_param=True)
-    
-    # 测试使用 searchkey 参数
-    await test_query(stock_code, year, use_stock_param=False)
+    for stock_code, year, company_name in test_cases:
+        print(f"\n{'='*80}")
+        print(f"测试股票: {company_name} ({stock_code})")
+        print(f"{'='*80}")
+        
+        # 测试使用 stock 参数
+        await test_query(stock_code, year, use_stock_param=True)
+        
+        # 测试使用 searchkey 参数
+        await test_query(stock_code, year, use_stock_param=False)
 
 if __name__ == "__main__":
     asyncio.run(main())

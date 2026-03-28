@@ -86,8 +86,8 @@ class SimplifiedReportService:
                 "column": "szse",
                 "tabName": "fulltext",
                 "plate": "",
-                "stock": "",
-                "searchkey": company_name,
+                "stock": "",  # 不使用stock参数，改用searchkey
+                "searchkey": f"{stock_code} {company_name}",  # 同时搜索股票代码和公司名
                 "secid": "",
                 "category": category,
                 "trade": "",

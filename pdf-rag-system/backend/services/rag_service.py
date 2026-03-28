@@ -23,6 +23,8 @@ import httpx
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from services.chunker import logical_chunk, parse_source_meta
+from services.query_router import parse_intent, build_where_filter, hybrid_rerank, bge_rerank
 
 from config import (
     DEEPSEEK_API_KEY, KIMI_API_KEY, KIMI_BASE_URL, KIMI_MODEL,
@@ -191,15 +193,32 @@ def _sort_retrieved_chunks(items: List[Dict], sort_by: str) -> List[Dict]:
     return sorted(items, key=lambda item: (item["score"], -item["page_number"], -item["chunk_index"]), reverse=True)
 
 
+_EMBEDDING_CONCURRENCY = 5  # 并发请求数
+
+
 async def _get_embeddings(texts: List[str], api_key: str = None) -> List[List[float]]:
-    """调用硅基流动 Embedding API（批量）"""
+    """调用硅基流动 Embedding API（批量，5 路并发）"""
     key = api_key or DEEPSEEK_API_KEY
     if not key:
         raise ValueError("DEEPSEEK_API_KEY 未设置，无法调用 Embedding API")
 
-    results = []
+    # 硅基流动 bge-large-zh 限制 512 tokens；表格/数字 token 密度高，保守截断到 600 字符
+    _MAX_EMBED_CHARS = 600
+    texts = [t[:_MAX_EMBED_CHARS] if len(t) > _MAX_EMBED_CHARS else t for t in texts]
+
+    # 拆分为多个批次：[(batch_texts_0), (batch_texts_1), ...]
+    batches: List[List[str]] = []
     for i in range(0, len(texts), EMBEDDING_BATCH_SIZE):
-        batch = texts[i:i + EMBEDDING_BATCH_SIZE]
+        batches.append(texts[i:i + EMBEDDING_BATCH_SIZE])
+
+    if not batches:
+        return []
+
+    sem = asyncio.Semaphore(_EMBEDDING_CONCURRENCY)
+    results_map: Dict[int, List[List[float]]] = {}
+
+    async def _embed_one_request(batch_texts: List[str]) -> List[List[float]]:
+        """发送单次 embedding 请求"""
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
                 f"{EMBEDDING_BASE_URL}/embeddings",
@@ -209,16 +228,51 @@ async def _get_embeddings(texts: List[str], api_key: str = None) -> List[List[fl
                 },
                 json={
                     "model": EMBEDDING_MODEL,
-                    "input": batch,
+                    "input": batch_texts,
                     "encoding_format": "float"
                 }
             )
             if resp.status_code != 200:
                 raise Exception(f"Embedding API 错误: {resp.status_code} - {resp.text}")
             data = resp.json()
-            for item in sorted(data["data"], key=lambda x: x["index"]):
-                results.append(item["embedding"])
-    return results
+            return [item["embedding"] for item in sorted(data["data"], key=lambda x: x["index"])]
+
+    async def _embed_batch(batch_idx: int, batch_texts: List[str]):
+        async with sem:
+            try:
+                results_map[batch_idx] = await _embed_one_request(batch_texts)
+            except Exception as e:
+                if "413" in str(e) or "20042" in str(e):
+                    # token 超限：逐条截断到 400 字符重试
+                    print(f"[Embedding] 批次{batch_idx} 超限，逐条截断重试")
+                    truncated = [t[:400] for t in batch_texts]
+                    try:
+                        results_map[batch_idx] = await _embed_one_request(truncated)
+                    except Exception as e2:
+                        print(f"[Embedding] 批次{batch_idx} 重试仍失败: {e2}")
+                        results_map[batch_idx] = None
+                else:
+                    print(f"[Embedding] 批次{batch_idx} 失败: {e}")
+                    results_map[batch_idx] = None
+
+    await asyncio.gather(*[_embed_batch(idx, batch) for idx, batch in enumerate(batches)])
+
+    # 按原始顺序拼接，跳过失败批次
+    all_embeddings = []
+    failed_count = 0
+    for idx in range(len(batches)):
+        batch_result = results_map.get(idx)
+        if batch_result is None:
+            # 失败批次用零向量填充（保持索引对齐）
+            from config import EMBEDDING_DIM
+            for _ in batches[idx]:
+                all_embeddings.append([0.0] * EMBEDDING_DIM)
+            failed_count += len(batches[idx])
+        else:
+            all_embeddings.extend(batch_result)
+    if failed_count > 0:
+        print(f"[Embedding] 警告: {failed_count} 条使用零向量填充")
+    return all_embeddings
 
 
 def _get_embedding_sync(text: str, api_key: str = None) -> List[float]:
@@ -415,46 +469,37 @@ def extract_text_from_pdf(pdf_path: str, max_chars: int = 30000) -> str:
 
 # ---------- 文本分块 ----------
 
-def chunk_documents(pages: List[Dict]) -> List[Dict]:
+def chunk_documents(pages: List[Dict], source_meta: Dict = None) -> List[Dict]:
     """
-    将页面文本分块。
-    使用 RecursiveCharacterTextSplitter（滑动窗口）。
+    逻辑切分：章节感知 + 表格整体保留 + 头部上下文注入。
+    委托给 services.chunker.logical_chunk。
     """
-    splitter = RecursiveCharacterTextSplitter(
+    return logical_chunk(
+        pages,
+        strategy="auto",
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
-        separators=["\n\n", "\n", "。", "；", ".", ";", " ", ""],
-        length_function=len,
+        context_meta=source_meta or {},
     )
-
-    chunks = []
-    for page in pages:
-        texts = splitter.split_text(page["text"])
-        for i, text in enumerate(texts):
-            chunk_id = hashlib.md5(f"{page['source']}:{page['page_number']}:{i}:{text[:50]}".encode()).hexdigest()
-            chunks.append({
-                "id": chunk_id,
-                "text": text,
-                "metadata": {
-                    "source": page["source"],
-                    "page_number": page["page_number"],
-                    "chunk_index": i,
-                    "is_table": page.get("is_table", False)
-                }
-            })
-
-    return chunks
 
 
 # ---------- 向量化入库 ----------
 
-async def ingest_pdf(pdf_path: str, user_id: int, document_id: int = None) -> Dict:
+async def ingest_pdf(pdf_path: str, user_id: int, document_id: int = None,
+                     progress_callback=None) -> Dict:
     """
     完整的 PDF 入库流程：解析 → 分块 → 向量化 → 存入 ChromaDB
+
+    Args:
+        progress_callback: 可选的异步回调函数 async fn(message: str)，用于向前端推送进度
 
     Returns:
         {"status": "ok", "chunks": N, "document_id": ..., "source": ...}
     """
+    async def _progress(msg: str):
+        if progress_callback:
+            await progress_callback(msg)
+
     full_path = _resolve_existing_pdf_path(pdf_path)
 
     if not os.path.exists(full_path):
@@ -463,17 +508,24 @@ async def ingest_pdf(pdf_path: str, user_id: int, document_id: int = None) -> Di
     source_name = os.path.basename(full_path)
     print(f"[RAG] 开始处理: {source_name}")
 
+    # 从文件名解析公司/年份等元信息
+    source_meta = parse_source_meta(source_name)
+    print(f"[RAG] 解析元信息: {source_meta}")
+
     # 1. 解析 PDF
+    await _progress(f"正在解析PDF文档...")
     pages = parse_pdf(full_path)
     if not pages:
         return {"status": "error", "message": "PDF 解析结果为空"}
     print(f"[RAG] 解析完成: {len(pages)} 页/段")
+    await _progress(f"PDF解析完成，共 {len(pages)} 页")
 
-    # 2. 分块
-    chunks = chunk_documents(pages)
+    # 2. 分块（逻辑切分）
+    chunks = chunk_documents(pages, source_meta=source_meta)
     if not chunks:
         return {"status": "error", "message": "分块结果为空"}
     print(f"[RAG] 分块完成: {len(chunks)} 个块")
+    await _progress(f"文本分块完成，共 {len(chunks)} 个块")
 
     # 3. 获取 collection
     collection = _get_collection(user_id)
@@ -487,34 +539,54 @@ async def ingest_pdf(pdf_path: str, user_id: int, document_id: int = None) -> Di
     except Exception:
         pass
 
-    # 5. 批量 Embedding + 写入
-    batch_size = EMBEDDING_BATCH_SIZE
-    total_written = 0
-    for i in range(0, len(chunks), batch_size):
-        batch = chunks[i:i + batch_size]
-        texts = [c["text"] for c in batch]
-        ids = [c["id"] for c in batch]
-        metadatas = []
-        for c in batch:
-            meta = dict(c["metadata"])
-            if document_id is not None:
-                meta["document_id"] = document_id
-            # ChromaDB metadata 只能存 str/int/float/bool
-            meta["page_number"] = int(meta["page_number"])
-            meta["chunk_index"] = int(meta["chunk_index"])
-            meta["is_table"] = bool(meta.get("is_table", False))
-            metadatas.append(meta)
+    # 5. 准备 metadata
+    all_texts = [c["text"] for c in chunks]
+    all_ids = [c["id"] for c in chunks]
+    all_metadatas = []
+    for c in chunks:
+        meta = dict(c["metadata"])
+        if document_id is not None:
+            meta["document_id"] = document_id
+        meta["page_number"] = int(meta.get("page_number", 0))
+        meta["chunk_index"] = int(meta.get("chunk_index", 0))
+        meta["is_table"] = bool(meta.get("is_table", False))
+        meta["section_title"] = str(meta.get("section_title", ""))
+        if meta.get("year"):
+            meta["year"] = int(meta["year"])
+        meta = {k: v for k, v in meta.items() if v != "" and v is not None}
+        all_metadatas.append(meta)
 
+    # 6. 一次性并发获取所有 Embedding（内部 5 路并发 + batch_size=64）
+    import time as _time
+    t_embed = _time.time()
+    await _progress(f"正在向量化 {len(chunks)} 个文本块（这可能需要1-2分钟）...")
+    try:
+        all_embeddings = await _get_embeddings(all_texts)
+    except Exception as e:
+        print(f"[RAG] Embedding 批量获取失败: {e}")
+        traceback.print_exc()
+        return {"status": "error", "message": f"Embedding 失败: {e}"}
+    embed_time = _time.time() - t_embed
+    print(f"[RAG] Embedding 完成: {len(all_embeddings)} 个, 耗时 {embed_time:.1f}s")
+    await _progress(f"向量化完成（{embed_time:.0f}秒），正在写入向量库...")
+
+    # 7. 分批写入 ChromaDB（ChromaDB 单次写入有大小限制，按 batch 写）
+    write_batch = 500
+    total_written = 0
+    total_batches = (len(chunks) + write_batch - 1) // write_batch
+    for batch_no, i in enumerate(range(0, len(chunks), write_batch), 1):
+        end = min(i + write_batch, len(chunks))
         try:
-            embeddings = await _get_embeddings(texts)
             collection.add(
-                ids=ids,
-                embeddings=embeddings,
-                documents=texts,
-                metadatas=metadatas
+                ids=all_ids[i:end],
+                embeddings=all_embeddings[i:end],
+                documents=all_texts[i:end],
+                metadatas=all_metadatas[i:end]
             )
-            total_written += len(batch)
+            total_written += (end - i)
             print(f"[RAG] 写入进度: {total_written}/{len(chunks)}")
+            if total_batches > 1:
+                await _progress(f"写入向量库: {total_written}/{len(chunks)} ({batch_no}/{total_batches})")
         except Exception as e:
             print(f"[RAG] 批次写入失败: {e}")
             traceback.print_exc()
@@ -535,35 +607,65 @@ async def retrieve(query: str, user_id: int, top_k: int = 5,
                    score_threshold: float = 0.55,
                    file_types: List[str] = None,
                    sort_by: str = "score_desc",
-                   raise_on_error: bool = False) -> List[Dict]:
+                   raise_on_error: bool = False,
+                   enable_hybrid: bool = True,
+                   enable_rerank: bool = True) -> List[Dict]:
     """
     从用户的向量库中检索相关文档块。
 
+    三阶段漏斗：
+      1. 意图解析 + 元数据过滤：自动从 query 提取公司名/年份，锁定向量库过滤条件
+      2. BM25 混合重排：向量分 + BM25 分 RRF 融合，提升硬实体召回
+      3. BGE-Reranker 精排：Cross-Encoder 精准判相关性，并触发断路器
+
     Args:
-        query: 用户问题
-        user_id: 用户ID
-        top_k: 返回Top-K结果
-        document_ids: 可选，限定在特定文档内检索
+        query:          用户问题
+        user_id:        用户ID
+        top_k:          返回Top-K结果
+        document_ids:   可选，显式限定文档范围（最高优先级）
+        enable_hybrid:  是否启用 BM25 混合重排（默认开启）
+        enable_rerank:  是否启用 BGE-Reranker 精排（默认开启）
 
     Returns:
-        [{"text": ..., "source": ..., "page_number": ..., "score": ...}, ...]
+        [{"text": ..., "source": ..., "score": ..., "rerank_score": ..., "is_relevant": bool}, ...]
     """
     collection = _get_collection(user_id)
 
-    # 构建 where 过滤条件
-    where_filter = None
-    if document_ids and len(document_ids) > 0:
-        if len(document_ids) == 1:
-            where_filter = {"document_id": document_ids[0]}
-        else:
-            where_filter = {"document_id": {"$in": document_ids}}
+    # ---- 意图解析 + 元数据过滤 ----
+    intent = parse_intent(query)
+    if intent.companies or intent.year:
+        print(f"[RAG] 意图解析: companies={intent.companies}, year={intent.year}, quarter={intent.quarter}")
+
+    # 从向量库拿所有 source 文件名（用于意图匹配）
+    indexed_sources: List[str] = []
+    if not document_ids and not intent.is_empty():
+        try:
+            all_meta = collection.get(include=["metadatas"])
+            seen = set()
+            for m in (all_meta.get("metadatas") or []):
+                s = m.get("source", "")
+                if s and s not in seen:
+                    seen.add(s)
+                    indexed_sources.append(s)
+        except Exception:
+            pass
+
+    where_filter = build_where_filter(
+        intent,
+        indexed_sources,
+        explicit_document_ids=_normalize_int_list(document_ids),
+    )
+    if where_filter:
+        print(f"[RAG] 元数据过滤: {where_filter}")
 
     try:
-        # 获取查询 embedding
         query_embedding = await _get_embeddings([query])
 
+        # 混合检索时多取候选，给 BM25 足够的重排空间
         query_limit = top_k
-        if file_types or sort_by != "score_desc":
+        if enable_hybrid:
+            query_limit = min(max(top_k * 4, 20), 100)
+        elif file_types or sort_by != "score_desc":
             query_limit = min(max(top_k * 5, top_k), 100)
 
         results = collection.query(
@@ -589,8 +691,6 @@ async def retrieve(query: str, user_id: int, top_k: int = 5,
         results["metadatas"][0],
         results["distances"][0]
     ):
-        # ChromaDB cosine distance: 0 = 完全相同, 2 = 完全不同
-        # 转换为相似度分数 (0~1)
         similarity = 1 - (dist / 2)
         if similarity < score_threshold:
             filtered_count += 1
@@ -614,7 +714,29 @@ async def retrieve(query: str, user_id: int, top_k: int = 5,
     if filtered_count > 0:
         print(f"[RAG] 检索过滤: 丢弃 {filtered_count} 个低分结果 (阈值 {score_threshold})")
 
-    retrieved = _sort_retrieved_chunks(retrieved, sort_by)
+    # ---- 第二阶段：BM25 混合重排 ----
+    if enable_hybrid and retrieved:
+        retrieved = hybrid_rerank(query, retrieved)
+        print(f"[RAG] BM25混合重排完成, 候选={len(retrieved)}")
+    else:
+        retrieved = _sort_retrieved_chunks(retrieved, sort_by)
+
+    # ---- 第三阶段：BGE-Reranker 精排 + 断路器 ----
+    is_relevant = True
+    if enable_rerank and retrieved:
+        retrieved, is_relevant = await bge_rerank(
+            query,
+            retrieved,
+            api_key=DEEPSEEK_API_KEY,
+            top_n=top_k,
+        )
+        if not is_relevant:
+            print(f"[RAG] 断路器：知识库中无相关内容，返回空列表")
+            # 断路后仍返回结果，但标记 is_relevant=False 供调用方判断
+            for r in retrieved:
+                r["is_relevant"] = False
+            return retrieved
+
     return retrieved[:top_k]
 
 
@@ -698,7 +820,7 @@ def _build_rag_prompt(query: str, context_chunks: List[Dict],
 你是「{profile['identity']}」。
 
 ## 当前日期
-今天的真实日期是 {_today}（当前年份是{_cur_year}年，不是2025年）。你的训练数据可能截止于2025年，但现在确实已经是{_cur_year}年。
+今天的真实日期是 {_today}（当前年份是{_cur_year}年）。你的训练数据可能截止于2025年，但现在确实已经是{_cur_year}年。这意味你的所有信息都必须是2025年及以后的。
 
 ## 财报发布时间规律（调用 fetch_financial_report 时必须参考）
 A股财报披露时间表：
@@ -725,8 +847,8 @@ A股财报披露时间表：
 1. 严格基于提供的参考文档内容回答，不要编造数据
 2. 回答时引用来源，格式: [来源: 文件名, 第X页]
 3. 如果参考文档中没有相关信息，明确告知用户
-4. 使用 Markdown 格式组织回答，结构清晰
-5. 对于财务数据，保持精确
+4. 必须使用标准 Markdown 标题层级组织回答：用 `#` 做报告主标题，`##` 做大章节，`###` 做子章节，`####` 做小节。禁止使用"一、""（一）""1."等中文序号作为标题，必须用 # 号标题语法
+5. 对于财务数据，保持精确，表格必须使用 Markdown 表格语法（| 分隔列）
 
 ## 结构化交互指令
 当你判断需要与用户进行交互时（例如需求不明确、有多个分析方向可选、需要用户确认），
@@ -883,8 +1005,11 @@ AGENT_TOOLS = [
 ]
 
 
-async def _execute_tool(tool_name: str, tool_args: dict, user_id: int, db=None) -> str:
-    """执行 agent tool 调用，返回结果字符串"""
+async def _execute_tool(tool_name: str, tool_args: dict, user_id: int, db=None,
+                        progress_queue: asyncio.Queue = None) -> str:
+    """执行 agent tool 调用，返回结果字符串。
+    progress_queue: 可选，用于向调用方实时推送进度消息（str）。
+    """
 
     if tool_name == "search_vector_store":
         query = tool_args.get("query", "")
@@ -933,6 +1058,10 @@ async def _execute_tool(tool_name: str, tool_args: dict, user_id: int, db=None) 
         company_name = tool_args.get("company_name", "")
         stock_code = tool_args.get("stock_code", "")
         quarter = tool_args.get("quarter")
+        
+        # 添加调试信息
+        print(f"[DEBUG] fetch_financial_report 调用参数: {tool_args}")
+        
         # 智能推断年份：如果模型没传 year，根据当前月份判断最新可用财报年份
         if "year" in tool_args and tool_args["year"]:
             year = tool_args["year"]
@@ -941,6 +1070,8 @@ async def _execute_tool(tool_name: str, tool_args: dict, user_id: int, db=None) 
             # 1-4月：上一年年报正在披露，优先拿上一年
             # 5月后：当年Q1已出，但年报仍是上一年最完整的
             year = now.year - 1 if now.month <= 4 else now.year
+
+        print(f"[DEBUG] 最终使用参数: company_name={company_name}, stock_code={stock_code}, year={year}, quarter={quarter}")
 
         if not stock_code:
             return json.dumps({"status": "error", "message": "缺少股票代码"}, ensure_ascii=False)
@@ -970,12 +1101,15 @@ async def _execute_tool(tool_name: str, tool_args: dict, user_id: int, db=None) 
         try:
             from services.simple_report_service import SimplifiedReportService
             report_service = SimplifiedReportService()
+            print(f"[DEBUG] 开始调用 download_report_from_cninfo...")
             pdf_path = await report_service.download_report_from_cninfo(
                 stock_code, company_name, year, quarter
             )
+            print(f"[DEBUG] download_report_from_cninfo 返回: {pdf_path}")
             await report_service.close()
 
             if not pdf_path:
+                print(f"[DEBUG] 下载失败，返回failed状态")
                 return json.dumps({"status": "failed", "message": f"未能从巨潮资讯网找到 {company_name}({stock_code}) {year}年的财报"}, ensure_ascii=False)
 
             # 入库 Document 记录
@@ -1007,7 +1141,13 @@ async def _execute_tool(tool_name: str, tool_args: dict, user_id: int, db=None) 
 
             # 向量化入库
             doc_id = doc_record.id if doc_record else None
-            ingest_result = await ingest_pdf(pdf_path, user_id, document_id=doc_id)
+
+            async def _ingest_progress(msg: str):
+                if progress_queue:
+                    await progress_queue.put(msg)
+
+            ingest_result = await ingest_pdf(pdf_path, user_id, document_id=doc_id,
+                                             progress_callback=_ingest_progress)
 
             if ingest_result.get("status") == "error":
                 return json.dumps({"status": "error", "message": f"PDF解析入库失败: {ingest_result.get('message')}"}, ensure_ascii=False)
@@ -1054,6 +1194,12 @@ async def rag_chat_stream(
     yield f"data: {json.dumps({'type': 'phase', 'content': '正在检索相关文档...'}, ensure_ascii=False)}\n\n"
 
     chunks = await retrieve(query, user_id, top_k=top_k, document_ids=document_ids)
+
+    # 断路器感知：is_relevant=False 表示 Reranker 判定库中无相关内容
+    _is_relevant = all(c.get("is_relevant", True) for c in chunks) if chunks else True
+    if not _is_relevant:
+        chunks = []  # 不把无关内容塞进上下文，避免幻觉
+        yield f"data: {json.dumps({'type': 'phase', 'content': '⚠️ 知识库中未检索到相关内容，将结合联网搜索补充'}, ensure_ascii=False)}\n\n"
 
     if chunks:
         sources = [{"source": c["source"], "page_number": c["page_number"], "score": c["score"]} for c in chunks]
@@ -1228,7 +1374,23 @@ async def rag_chat_stream(
                         else:
                             yield f"data: {json.dumps({'type': 'phase', 'content': '正在处理...'}, ensure_ascii=False)}\n\n"
 
-                        tool_result = await _execute_tool(fn_name, fn_args, user_id, db=db)
+                        # 使用 progress_queue 在工具执行期间实时推送进度
+                        _pq = asyncio.Queue()
+                        _tool_task = asyncio.create_task(
+                            _execute_tool(fn_name, fn_args, user_id, db=db, progress_queue=_pq)
+                        )
+                        # 轮询：每 0.3s 检查队列中的进度消息，直到任务完成
+                        while not _tool_task.done():
+                            try:
+                                _progress_msg = await asyncio.wait_for(_pq.get(), timeout=0.3)
+                                yield f"data: {json.dumps({'type': 'phase', 'content': _progress_msg}, ensure_ascii=False)}\n\n"
+                            except asyncio.TimeoutError:
+                                pass
+                        # 任务完成后排空队列
+                        while not _pq.empty():
+                            _leftover = _pq.get_nowait()
+                            yield f"data: {json.dumps({'type': 'phase', 'content': _leftover}, ensure_ascii=False)}\n\n"
+                        tool_result = _tool_task.result()
                         print(f"[RAG-Agent] Tool result: {tool_result[:200]}...")
 
                         # 根据结果发送详细 phase

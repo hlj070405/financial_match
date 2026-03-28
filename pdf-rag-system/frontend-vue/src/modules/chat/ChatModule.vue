@@ -204,54 +204,50 @@
 
                 <div class="bg-white border border-gray-100 rounded-2xl rounded-tl-sm p-6 shadow-sm">
 
-                  <!-- AI Thinking Steps (always visible when steps exist) -->
-
+                  <!-- AI Thinking Steps -->
                   <div v-if="message.thinkingSteps && message.thinkingSteps.length > 0" class="mb-3">
-
-                    <details :open="message.isLoading || !message.content">
-
-                      <summary class="flex items-center gap-1.5 cursor-pointer select-none text-xs font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-500 transition-colors">
-
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
-
-                        <span>AI 思考过程</span>
-
-                        <span class="text-gray-300 font-normal normal-case tracking-normal ml-1">{{ message.thinkingSteps.length }} 步</span>
-
-                        <Loader2 v-if="message.isLoading && !message.content" class="w-3 h-3 animate-spin ml-1 text-indigo-500" />
-
-                      </summary>
-
-                      <div class="space-y-1 pl-1 border-l-2 border-indigo-200 mt-2">
-
-                        <div v-for="(step, si) in message.thinkingSteps" :key="si"
-                          class="flex items-start gap-2 pl-3 py-0.5 text-xs transition-all duration-300"
-                          :class="si === message.thinkingSteps.length - 1 && message.isLoading && !message.content ? 'text-indigo-600 font-medium' : 'text-gray-400'">
-
-                          <Loader2 v-if="si === message.thinkingSteps.length - 1 && message.isLoading && !message.content" class="w-3 h-3 animate-spin mt-0.5 flex-shrink-0" />
-
-                          <svg v-else class="w-3 h-3 mt-0.5 flex-shrink-0 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
-
-                          <span>{{ step.content }}</span>
-
-                          <span v-if="step.time" class="ml-auto text-gray-300 flex-shrink-0">{{ step.time }}</span>
-
-                        </div>
-
+                    <!-- 进行中：Lottie 动画 + 当前步骤 + 可展开历史 -->
+                    <div v-if="message.isLoading">
+                      <div class="flex items-center gap-2 text-sm text-indigo-600 font-medium">
+                        <LottieThinking :size="20" :speed="1.2" class="flex-shrink-0" />
+                        <span :key="message.thinkingSteps.length" class="thinking-text-enter">{{ message.thinkingSteps[message.thinkingSteps.length - 1].content }}</span>
                       </div>
-
+                      <details v-if="message.thinkingSteps.length > 1" class="mt-1.5">
+                        <summary class="text-xs text-gray-400 cursor-pointer select-none hover:text-gray-500 transition-colors pl-7">
+                          已完成 {{ message.thinkingSteps.length - 1 }} 步 ▸
+                        </summary>
+                        <div class="space-y-0.5 pl-1 border-l-2 border-indigo-100 mt-1 ml-2.5">
+                          <div v-for="(step, si) in message.thinkingSteps.slice(0, -1)" :key="si"
+                            class="flex items-start gap-2 pl-3 py-0.5 text-xs text-gray-400">
+                            <svg class="w-3 h-3 mt-0.5 flex-shrink-0 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                            <span>{{ step.content }}</span>
+                            <span v-if="step.time" class="ml-auto text-gray-300 flex-shrink-0">{{ step.time }}</span>
+                          </div>
+                        </div>
+                      </details>
+                    </div>
+                    <!-- 完成后：全部折叠 -->
+                    <details v-else>
+                      <summary class="flex items-center gap-1.5 cursor-pointer select-none text-xs text-gray-400 hover:text-gray-500 transition-colors">
+                        <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                        <span>AI 思考过程</span>
+                        <span class="text-gray-300 ml-1">{{ message.thinkingSteps.length }} 步</span>
+                      </summary>
+                      <div class="space-y-0.5 pl-1 border-l-2 border-gray-200 mt-2 ml-1">
+                        <div v-for="(step, si) in message.thinkingSteps" :key="si"
+                          class="flex items-start gap-2 pl-3 py-0.5 text-[11px] text-gray-400">
+                          <svg class="w-3 h-3 mt-0.5 flex-shrink-0 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                          <span>{{ step.content }}</span>
+                          <span v-if="step.time" class="ml-auto text-gray-300 flex-shrink-0">{{ step.time }}</span>
+                        </div>
+                      </div>
                     </details>
-
                   </div>
 
                   <!-- AI Loading State (no steps yet) -->
-
                   <div v-if="!message.content && message.isLoading && (!message.thinkingSteps || message.thinkingSteps.length === 0)" class="flex items-center gap-2 text-gray-500">
-
-                    <Loader2 class="w-4 h-4 animate-spin" />
-
+                    <LottieThinking :size="22" :speed="0.8" />
                     <span class="text-sm font-medium">正在连接 AI...</span>
-
                   </div>
 
                   <!-- AI Content -->
@@ -388,6 +384,17 @@
 
                      <RotateCw class="w-4 h-4" />
 
+                   </button>
+
+                   <button 
+                     v-if="message.content && !message.isLoading"
+                     @click="exportToPdf(message, index)" 
+                     class="p-1.5 text-gray-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition flex items-center gap-1"
+                     :class="{ 'animate-pulse pointer-events-none': message._exporting }"
+                     title="导出为 PDF"
+                   >
+                     <Download class="w-4 h-4" />
+                     <span v-if="message._exporting" class="text-[10px]">生成中...</span>
                    </button>
 
                 </div>
@@ -816,7 +823,9 @@ import {
 
   Lightbulb,
 
-  CheckCircle2
+  CheckCircle2,
+
+  Download
 
 } from 'lucide-vue-next'
 
@@ -825,6 +834,10 @@ import ReportPlaceholder from './ReportPlaceholder.vue'
 import PdfViewer from '../../components/PdfViewer.vue'
 
 import FileWorkspace from './FileWorkspace.vue'
+
+import LottieThinking from '../../components/LottieThinking.vue'
+
+import html2pdf from 'html2pdf.js'
 
 
 
@@ -1473,6 +1486,89 @@ const formatMessage = (content) => {
 
 }
 
+const exportToPdf = async (message, index) => {
+  if (message._exporting) return
+  message._exporting = true
+
+  try {
+    const htmlContent = formatMessage(message.content)
+
+    // 提取首行作为文件名
+    const firstLine = message.content.split('\n').find(l => l.trim()) || '分析报告'
+    const fileName = firstLine.replace(/^#+\s*/, '').replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 50) || '分析报告'
+
+    // 构建带完整样式的 HTML
+    const wrapper = document.createElement('div')
+    wrapper.innerHTML = `
+      <div style="padding: 40px 50px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #1e293b; line-height: 1.8; max-width: 100%;">
+        <!-- 页眉 -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; margin-bottom: 24px; border-bottom: 2px solid #6366f1;">
+          <div>
+            <span style="font-size: 18px; font-weight: 700; background: linear-gradient(135deg, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Phantom Flow</span>
+            <span style="font-size: 12px; color: #94a3b8; margin-left: 8px;">幻流 · 智能金融分析</span>
+          </div>
+          <div style="font-size: 11px; color: #94a3b8;">${new Date().toLocaleString('zh-CN')}</div>
+        </div>
+
+        <!-- 正文 -->
+        <div class="pdf-body">${htmlContent}</div>
+
+        <!-- 页脚 -->
+        <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #94a3b8; text-align: center;">
+          本报告由 Phantom Flow 智能分析系统自动生成，仅供参考，不构成投资建议。
+        </div>
+      </div>
+    `
+
+    // 注入 PDF 专用样式
+    const style = document.createElement('style')
+    style.textContent = `
+      .pdf-body h1 { font-size: 22px; font-weight: 700; color: #0f172a; margin: 24px 0 12px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
+      .pdf-body h2 { font-size: 18px; font-weight: 700; color: #1e293b; margin: 20px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9; }
+      .pdf-body h3 { font-size: 15px; font-weight: 600; color: #334155; margin: 16px 0 8px; }
+      .pdf-body h4 { font-size: 13px; font-weight: 600; color: #475569; margin: 12px 0 6px; }
+      .pdf-body p { font-size: 13px; color: #475569; margin: 8px 0; }
+      .pdf-body strong { color: #1e293b; }
+      .pdf-body ul, .pdf-body ol { padding-left: 20px; margin: 8px 0; }
+      .pdf-body li { font-size: 13px; color: #475569; margin: 4px 0; }
+      .pdf-body table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 12px; }
+      .pdf-body th, .pdf-body td { border: 1px solid #e2e8f0; padding: 6px 10px; text-align: left; word-break: break-word; }
+      .pdf-body th { background: #f8fafc; font-weight: 600; color: #1e293b; }
+      .pdf-body tr:nth-child(even) { background: #f8fafc; }
+      .pdf-body blockquote { border-left: 3px solid #6366f1; padding: 8px 16px; margin: 12px 0; background: #f8fafc; color: #475569; font-size: 13px; }
+      .pdf-body code { background: #f1f5f9; padding: 1px 4px; border-radius: 3px; font-size: 12px; color: #6366f1; }
+      .pdf-body pre { background: #1e293b; color: #e2e8f0; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 12px; }
+    `
+    wrapper.prepend(style)
+
+    // 临时插入 DOM（html2pdf 需要）
+    wrapper.style.position = 'fixed'
+    wrapper.style.left = '-9999px'
+    wrapper.style.top = '0'
+    wrapper.style.width = '210mm'
+    document.body.appendChild(wrapper)
+
+    await html2pdf()
+      .set({
+        margin: 0,
+        filename: `${fileName}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+      })
+      .from(wrapper)
+      .save()
+
+    document.body.removeChild(wrapper)
+  } catch (err) {
+    console.error('PDF 导出失败:', err)
+    alert('PDF 导出失败: ' + err.message)
+  } finally {
+    message._exporting = false
+  }
+}
+
 
 
 const limitText = (text, maxLength = 32) => {
@@ -2027,6 +2123,8 @@ const handleSend = async () => {
 
               if (targetMessages[messageIndex]) {
 
+                targetMessages[messageIndex].isLoading = true
+
                 const step = { content: parsed.content, time: new Date().toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) }
 
                 if (!targetMessages[messageIndex].thinkingSteps) targetMessages[messageIndex].thinkingSteps = []
@@ -2476,7 +2574,7 @@ const handleAnalyzeExisting = async (doc) => {
     content: `📄 直接分析文档: ${doc.title || doc.name || '未知文档'}`
   })
 
-  const assistantMsg = { role: 'assistant', content: '', isLoading: true, sources: [] }
+  const assistantMsg = { role: 'assistant', content: '', isLoading: true, sources: [], thinkingSteps: [] }
   messages.value.push(assistantMsg)
   const msgIdx = messages.value.length - 1
   isLoading.value = true
@@ -2517,7 +2615,10 @@ const handleAnalyzeExisting = async (doc) => {
             if (isUserAtBottom()) scrollToBottom()
           } else if (parsed.type === 'phase') {
             messages.value[msgIdx].isLoading = true
-            messages.value[msgIdx].content = parsed.content + '\n\n'
+            const step = { content: parsed.content, time: new Date().toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) }
+            if (!messages.value[msgIdx].thinkingSteps) messages.value[msgIdx].thinkingSteps = []
+            messages.value[msgIdx].thinkingSteps.push(step)
+            if (isUserAtBottom()) scrollToBottom()
           } else if (parsed.type === 'finish') {
             messages.value[msgIdx].isLoading = false
           } else if (parsed.type === 'error') {
@@ -2551,7 +2652,8 @@ const handleDirectAnalyze = async (file) => {
     role: 'assistant',
     content: '',
     isLoading: true,
-    sources: []
+    sources: [],
+    thinkingSteps: []
   }
   messages.value.push(assistantMsg)
   const msgIdx = messages.value.length - 1
@@ -2599,7 +2701,10 @@ const handleDirectAnalyze = async (file) => {
             if (isUserAtBottom()) scrollToBottom()
           } else if (parsed.type === 'phase') {
             messages.value[msgIdx].isLoading = true
-            messages.value[msgIdx].content = parsed.content + '\n\n'
+            const step = { content: parsed.content, time: new Date().toLocaleTimeString('zh-CN', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) }
+            if (!messages.value[msgIdx].thinkingSteps) messages.value[msgIdx].thinkingSteps = []
+            messages.value[msgIdx].thinkingSteps.push(step)
+            if (isUserAtBottom()) scrollToBottom()
           } else if (parsed.type === 'finish') {
             messages.value[msgIdx].isLoading = false
           } else if (parsed.type === 'error') {
@@ -2663,6 +2768,100 @@ onMounted(() => {
 
   background: #d1d5db;
 
+}
+
+/* Markdown 标题层级样式 */
+.prose :deep(h1) {
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.prose :deep(h2) {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.prose :deep(h3) {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #334155;
+  margin-top: 1rem;
+  margin-bottom: 0.4rem;
+}
+
+.prose :deep(h4) {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #475569;
+  margin-top: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+/* Markdown 表格样式 */
+.prose :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.prose :deep(th),
+.prose :deep(td) {
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  word-break: break-word;
+  min-width: 5rem;
+}
+
+.prose :deep(th) {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 0.8125rem;
+}
+
+.prose :deep(tr:nth-child(even)) {
+  background: #f8fafc;
+}
+
+.prose :deep(tr:hover) {
+  background: #f1f5f9;
+}
+
+.prose :deep(td:first-child) {
+  font-weight: 500;
+  color: #334155;
+}
+
+/* 思考步骤文字切换动画 */
+.thinking-text-enter {
+  animation: thinkingFadeSlide 0.35s ease-out;
+}
+
+@keyframes thinkingFadeSlide {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 </style>
