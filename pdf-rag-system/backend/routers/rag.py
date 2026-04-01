@@ -356,7 +356,7 @@ async def search_documents(
         raise HTTPException(status_code=400, detail="query 不能为空")
 
     top_k = max(1, min(request.top_k, 50))
-    score_threshold = request.score_threshold if request.score_threshold is not None else 0.55
+    score_threshold = request.score_threshold if request.score_threshold is not None else 0.4
     if score_threshold < 0 or score_threshold > 1:
         raise HTTPException(status_code=400, detail="score_threshold 必须在 0 到 1 之间")
 

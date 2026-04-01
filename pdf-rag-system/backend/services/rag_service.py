@@ -2,8 +2,8 @@
 LangChain RAG 服务 - 替代 Dify 的 RAG Pipeline
 
 核心功能：
-  1. PDF 解析（PyMuPDF + pdfplumber 表格提取）
-  2. 文本分块（滑动窗口 512 tokens, overlap 64）
+  1. PDF 解析（Docling 实时转 Markdown + PyMuPDF fallback）
+  2. 文本分块（Markdown 结构化切分 / 滑动窗口兜底）
   3. Embedding（硅基流动 BAAI/bge-large-zh-v1.5）
   4. 向量存储（ChromaDB 本地持久化）
   5. 检索对话（混合检索 + LLM 生成，支持流式输出）
@@ -17,6 +17,33 @@ import traceback
 from pathlib import Path
 from typing import List, Dict, Optional, Generator
 from datetime import datetime
+
+# ========== DEBUG LOGGING ==========
+_DEBUG_LOG_PATH = os.path.join(os.path.dirname(__file__), "..", "debug-4459df.log")
+
+def _debug_log(hypothesis_id: str, location: str, message: str, data: dict):
+    import datetime as _dt
+    import threading
+    entry = {
+        "sessionId": "4459df",
+        "id": f"log_{int(_dt.datetime.now().timestamp()*1000)}",
+        "timestamp": int(_dt.datetime.now().timestamp() * 1000),
+        "location": location,
+        "message": message,
+        "data": data,
+        "runId": "debug-run",
+        "hypothesisId": hypothesis_id
+    }
+    try:
+        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+# ========== END DEBUG LOGGING ==========
+
+# 设置 Docling 环境变量（必须在导入 docling 之前）
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 import fitz  # PyMuPDF
 import httpx
@@ -214,6 +241,12 @@ async def _get_embeddings(texts: List[str], api_key: str = None) -> List[List[fl
     if not batches:
         return []
 
+    _debug_log("H2", "rag_service.py:241_batch_start", "Embedding batch starting", {
+        "total_batches": len(batches),
+        "batch_sizes": [len(b) for b in batches],
+        "empty_texts_count": sum(1 for b in batches for t in b if not t.strip()),
+    })
+
     sem = asyncio.Semaphore(_EMBEDDING_CONCURRENCY)
     results_map: Dict[int, List[List[float]]] = {}
 
@@ -260,6 +293,7 @@ async def _get_embeddings(texts: List[str], api_key: str = None) -> List[List[fl
     # 按原始顺序拼接，跳过失败批次
     all_embeddings = []
     failed_count = 0
+    zero_vector_count = 0
     for idx in range(len(batches)):
         batch_result = results_map.get(idx)
         if batch_result is None:
@@ -270,6 +304,16 @@ async def _get_embeddings(texts: List[str], api_key: str = None) -> List[List[fl
             failed_count += len(batches[idx])
         else:
             all_embeddings.extend(batch_result)
+            for emb in batch_result:
+                if all(v == 0.0 for v in emb):
+                    zero_vector_count += 1
+
+    _debug_log("H2", "rag_service.py:300_embedding_result", "Embedding batch completed", {
+        "total_returned": len(all_embeddings),
+        "failed_count": failed_count,
+        "zero_vector_count": zero_vector_count,
+        "first_embedding_sample": all_embeddings[0][:5] if all_embeddings else [],
+    })
     if failed_count > 0:
         print(f"[Embedding] 警告: {failed_count} 条使用零向量填充")
     return all_embeddings
@@ -365,6 +409,33 @@ def _get_collection(user_id: int):
 
 
 # ---------- PDF 解析 ----------
+
+def convert_pdf_to_markdown(pdf_path: str, output_md_path: str = None) -> str:
+    """
+    使用 Docling 将 PDF 实时转换为 Markdown。
+    返回生成的 Markdown 文件路径。
+    """
+    try:
+        from docling.document_converter import DocumentConverter
+        
+        print(f"[Docling] 开始转换 PDF: {os.path.basename(pdf_path)}")
+        converter = DocumentConverter()
+        result = converter.convert(pdf_path)
+        md_content = result.document.export_to_markdown()
+        
+        if output_md_path is None:
+            output_md_path = os.path.splitext(pdf_path)[0] + ".md"
+        
+        with open(output_md_path, "w", encoding="utf-8") as f:
+            f.write(md_content)
+        
+        print(f"[Docling] 转换完成: {output_md_path} ({len(md_content)} 字符)")
+        return output_md_path
+    except Exception as e:
+        print(f"[Docling] 转换失败: {e}")
+        traceback.print_exc()
+        return None
+
 
 def _ocr_page(page) -> str:
     """对单页 PDF 进行 OCR（扫描件兜底）"""
@@ -469,18 +540,32 @@ def extract_text_from_pdf(pdf_path: str, max_chars: int = 30000) -> str:
 
 # ---------- 文本分块 ----------
 
-def chunk_documents(pages: List[Dict], source_meta: Dict = None) -> List[Dict]:
+def chunk_documents(pages: List[Dict], source_meta: Dict = None, is_markdown: bool = False) -> List[Dict]:
     """
     逻辑切分：章节感知 + 表格整体保留 + 头部上下文注入。
+    如果是预处理的 Markdown，将启用基于 Markdown 结构的高级分块。
     委托给 services.chunker.logical_chunk。
     """
-    return logical_chunk(
+    empty_pages = [p for p in pages if not (p.get("text") or "").strip()]
+    _debug_log("H3", "rag_service.py:549_chunk_start", "chunk_documents called", {
+        "total_pages": len(pages),
+        "empty_pages": len(empty_pages),
+        "first_page_len": len(pages[0].get("text", "")) if pages else 0,
+        "is_markdown": is_markdown,
+    })
+    chunks = logical_chunk(
         pages,
         strategy="auto",
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
         context_meta=source_meta or {},
+        is_markdown=is_markdown,
     )
+    _debug_log("H3", "rag_service.py:564_chunk_end", "chunk_documents result", {
+        "chunks_count": len(chunks),
+        "empty_chunks": sum(1 for c in chunks if not (c.get("text") or "").strip()),
+    })
+    return chunks
 
 
 # ---------- 向量化入库 ----------
@@ -512,16 +597,53 @@ async def ingest_pdf(pdf_path: str, user_id: int, document_id: int = None,
     source_meta = parse_source_meta(source_name)
     print(f"[RAG] 解析元信息: {source_meta}")
 
-    # 1. 解析 PDF
-    await _progress(f"正在解析PDF文档...")
-    pages = parse_pdf(full_path)
-    if not pages:
-        return {"status": "error", "message": "PDF 解析结果为空"}
-    print(f"[RAG] 解析完成: {len(pages)} 页/段")
-    await _progress(f"PDF解析完成，共 {len(pages)} 页")
+    # 1. 解析/读取文件
+    md_path = os.path.splitext(full_path)[0] + ".md"
+    is_markdown = False
+    pages = []
+    
+    if os.path.exists(md_path):
+        # 尝试使用预处理好的 Markdown
+        await _progress(f"发现预处理 Markdown 文件，正在加载...")
+        print(f"[RAG] 发现预处理的 MD 文件: {md_path}")
+        with open(md_path, "r", encoding="utf-8") as f:
+            md_content = f.read()
+            pages = [{"text": md_content, "source": source_name}]
+            is_markdown = True
+        print(f"[RAG] MD 读取完成")
+        await _progress(f"预处理Markdown加载完成")
+    else:
+        # 尝试实时转换为 Markdown
+        await _progress(f"正在进行文档结构化解析（Docling），请稍候...")
+        print(f"[RAG] 未找到预处理 MD，尝试实时 Docling 转换: {full_path}")
+        
+        # 使用 run_in_executor 将同步的 Docling 转换放入线程池
+        loop = asyncio.get_event_loop()
+        converted_md_path = await loop.run_in_executor(
+            None, convert_pdf_to_markdown, full_path, md_path
+        )
+        
+        if converted_md_path and os.path.exists(converted_md_path):
+            # Docling 转换成功
+            print(f"[RAG] Docling 转换成功，使用 Markdown 模式")
+            with open(converted_md_path, "r", encoding="utf-8") as f:
+                md_content = f.read()
+                pages = [{"text": md_content, "source": source_name}]
+                is_markdown = True
+            await _progress(f"文档结构化解析完成")
+        else:
+            # Fallback 到原生 PDF 解析
+            await _progress(f"结构化解析失败，使用原生 PDF 解析...")
+            print(f"[RAG] Docling 转换失败，回退到原生 PDF 解析: {full_path}")
+            pages = parse_pdf(full_path)
+            if not pages:
+                return {"status": "error", "message": "PDF 解析结果为空"}
+            await _progress(f"PDF解析完成，共 {len(pages)} 页")
+        print(f"[RAG] 解析完成: {len(pages)} 页/段")
+        await _progress(f"PDF解析完成，共 {len(pages)} 页")
 
     # 2. 分块（逻辑切分）
-    chunks = chunk_documents(pages, source_meta=source_meta)
+    chunks = chunk_documents(pages, source_meta=source_meta, is_markdown=is_markdown)
     if not chunks:
         return {"status": "error", "message": "分块结果为空"}
     print(f"[RAG] 分块完成: {len(chunks)} 个块")
@@ -591,7 +713,7 @@ async def ingest_pdf(pdf_path: str, user_id: int, document_id: int = None,
             print(f"[RAG] 批次写入失败: {e}")
             traceback.print_exc()
 
-    print(f"[RAG] ✅ 入库完成: {source_name}, {total_written} 个块")
+    print(f"[RAG] 入库完成: {source_name}, {total_written} 个块")
     return {
         "status": "ok",
         "chunks": total_written,
@@ -660,6 +782,7 @@ async def retrieve(query: str, user_id: int, top_k: int = 5,
 
     try:
         query_embedding = await _get_embeddings([query])
+        _debug_log("H1", "rag_service.py:755_embed_call", "Embedding called for query", {"query_len": len(query), "embed_count": len(query_embedding) if query_embedding else 0, "first_embed_is_zero": bool(query_embedding and all(v == 0.0 for v in query_embedding[0]))})
 
         # 混合检索时多取候选，给 BM25 足够的重排空间
         query_limit = top_k
@@ -674,14 +797,22 @@ async def retrieve(query: str, user_id: int, top_k: int = 5,
             where=where_filter,
             include=["documents", "metadatas", "distances"]
         )
+        _debug_log("H1", "rag_service.py:769_chroma_query", "ChromaDB query results", {
+            "results_is_none": results is None,
+            "results_keys": list(results.keys()) if results else [],
+            "doc_count": len(results.get("documents", [[]])[0]) if results and results.get("documents") else 0,
+            "distances_sample": results.get("distances", [[]])[0][:3] if results and results.get("distances") and results["distances"][0] else [],
+        })
     except Exception as e:
         print(f"[RAG] 检索失败: {e}")
         traceback.print_exc()
+        _debug_log("H1", "rag_service.py:770_chroma_exception", "ChromaDB query exception", {"error": str(e)})
         if raise_on_error:
             raise
         return []
 
     if not results or not results["documents"] or not results["documents"][0]:
+        _debug_log("H1", "rag_service.py:777_empty_results", "ChromaDB returned empty results", {"results": str(results)[:200]})
         return []
 
     retrieved = []
@@ -1204,6 +1335,9 @@ async def rag_chat_stream(
     if chunks:
         sources = [{"source": c["source"], "page_number": c["page_number"], "score": c["score"]} for c in chunks]
         yield f"data: {json.dumps({'type': 'sources', 'sources': sources}, ensure_ascii=False)}\n\n"
+    else:
+        # 知识库为空时，显式告知前端检索结果为空
+        yield f"data: {json.dumps({'type': 'sources', 'sources': []}, ensure_ascii=False)}\n\n"
 
     # 2. 构建 prompt（带初始检索结果）
     yield f"data: {json.dumps({'type': 'phase', 'content': 'AI 正在分析...'}, ensure_ascii=False)}\n\n"
@@ -1391,7 +1525,10 @@ async def rag_chat_stream(
                             _leftover = _pq.get_nowait()
                             yield f"data: {json.dumps({'type': 'phase', 'content': _leftover}, ensure_ascii=False)}\n\n"
                         tool_result = _tool_task.result()
-                        print(f"[RAG-Agent] Tool result: {tool_result[:200]}...")
+                        try:
+                            print(f"[RAG-Agent] Tool result: {tool_result[:200]}...")
+                        except Exception:
+                            print(f"[RAG-Agent] Tool result: (非文本内容，无法打印)")
 
                         # 根据结果发送详细 phase
                         try:

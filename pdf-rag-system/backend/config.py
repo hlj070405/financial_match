@@ -39,8 +39,8 @@ EMBEDDING_BASE_URL = os.getenv("EMBEDDING_BASE_URL", "https://api.siliconflow.cn
 EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
 
 # RAG 分块
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "512"))
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "64"))
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "5120"))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "256"))
 
 # SiliconFlow 辅助模型（标题生成等）
 SILICONFLOW_BASE_URL = os.getenv("SILICONFLOW_BASE_URL", "https://api.siliconflow.cn/v1")

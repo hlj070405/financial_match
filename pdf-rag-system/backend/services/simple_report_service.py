@@ -33,7 +33,7 @@ class SimplifiedReportService:
         self.download_dir.mkdir(exist_ok=True)
         self.client = None
         
-        print("✅ 财报服务初始化完成（股票代码由预处理层提供）")
+        print("[INIT] 财报服务初始化完成（股票代码由预处理层提供）")
     
     async def _ensure_client(self):
         """确保HTTP客户端已初始化"""
@@ -177,7 +177,7 @@ class SimplifiedReportService:
                 f.write(pdf_response.content)
             
             file_size = len(pdf_response.content) / 1024 / 1024
-            print(f"[下载] ✅ 成功! 文件: {filepath} ({file_size:.2f} MB)")
+            print(f"[下载] 成功! 文件: {filepath} ({file_size:.2f} MB)")
             
             # 返回相对路径（仅文件名），用于前端构建URL
             return f"financial_reports/{filename}"
@@ -284,10 +284,10 @@ async def main():
     print("\n最终结果:")
     for download in result['downloads']:
         if download['status'] == 'success':
-            print(f"✅ {download['company']} ({download['stock_code']}) {download['year']}年")
+            print(f"[OK] {download['company']} ({download['stock_code']}) {download['year']}年")
             print(f"   PDF: {download['pdf_path']}")
         else:
-            print(f"❌ {download['company']} - {download['error']}")
+            print(f"[FAIL] {download['company']} - {download['error']}")
     
     await service.close()
 

@@ -23,28 +23,11 @@ import re
 import hashlib
 from typing import List, Dict, Optional
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-
+from langchain_text_splitters import RecursiveCharacterTextSplitter, MarkdownHeaderTextSplitter
 
 # ---------------------------------------------------------------------------
-# 章节标题识别正则
-# 覆盖常见中文财报/报告格式：
-#   第一章 / 第1节 / 一、 / 1. / 1.1 / (一) / （1）/ 一级标题纯文字行
+# 章节标题识别弱特征 (仅用于 fallback 的纯文本切分)
 # ---------------------------------------------------------------------------
-_SECTION_RE = re.compile(
-    r'^\s*'
-    r'(?:'
-    r'第[一二三四五六七八九十百\d]+[章节条款项]'    # 第X章/节/条
-    r'|[一二三四五六七八九十]+[、．.]'              # 一、 二．
-    r'|\d+[、．.]\d*'                               # 1. 1.1
-    r'|[（(]\d+[)）]'                              # (1) （一）
-    r'|[（(][一二三四五六七八九十]+[)）]'
-    r')'
-    r'\s*.{1,40}$',
-    re.MULTILINE
-)
-
-# 最大标题行长度（超过此长度不视为标题）
 _MAX_TITLE_LEN = 40
 
 
@@ -52,11 +35,99 @@ _MAX_TITLE_LEN = 40
 # 内部工具
 # ---------------------------------------------------------------------------
 
-def _is_section_title(line: str) -> bool:
+def _looks_like_table_row(line: str) -> bool:
+    stripped = line.strip()
+    if not stripped:
+        return False
+    if "\t" in stripped or "|" in stripped:
+        return True
+    if stripped.count("  ") >= 2:
+        return True
+    numeric_tokens = 0
+    for token in stripped.replace("|", " ").split():
+        compact = token.replace(",", "").replace(".", "").replace("%", "")
+        if compact and all(ch.isdigit() for ch in compact):
+            numeric_tokens += 1
+    return numeric_tokens >= 3
+
+
+def _is_numbering_prefix(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+
+    if stripped.startswith("第") and len(stripped) >= 3 and stripped[1] in "一二三四五六七八九十百0123456789":
+        return True
+
+    if len(stripped) >= 2 and stripped[0] in "一二三四五六七八九十" and stripped[1] in "、.．":
+        return True
+
+    if stripped[0].isdigit():
+        idx = 0
+        dot_count = 0
+        while idx < len(stripped) and (stripped[idx].isdigit() or stripped[idx] in ".．、"):
+            if stripped[idx] in ".．、":
+                dot_count += 1
+            idx += 1
+        if dot_count >= 1 and idx < len(stripped):
+            return True
+
+    if stripped[0] in "(（" and len(stripped) >= 3 and stripped[1] in "一二三四五六七八九十0123456789" and stripped[2] in ")）":
+        return True
+
+    return False
+
+
+def _score_section_title(line: str, next_line: str = "") -> int:
     stripped = line.strip()
     if not stripped or len(stripped) > _MAX_TITLE_LEN:
-        return False
-    return bool(_SECTION_RE.match(stripped))
+        return -10
+        
+    # 过滤过短的噪声（如单个字符 "-" 或 "计"）
+    if len(stripped) < 2:
+        return -10
+        
+    # 标题必须包含至少一个汉字或字母（过滤纯数字如 "130", "(1)"）
+    has_text = any('\u4e00' <= ch <= '\u9fff' or ch.isalpha() for ch in stripped)
+    if not has_text:
+        return -10
+
+    score = 0
+    if _is_numbering_prefix(stripped):
+        score += 3
+    if len(stripped) <= 20:
+        score += 2
+    elif len(stripped) <= 32:
+        score += 1
+
+    punctuation_count = sum(ch in "，。；：、】【,.!！?？:;" for ch in stripped)
+    if punctuation_count <= 1:
+        score += 1
+    else:
+        score -= 1
+
+    if stripped.endswith(("。", ".", "；", ";", "：", ":", "，", ",")):
+        score -= 2
+
+    digit_count = sum(ch.isdigit() for ch in stripped)
+    if digit_count / max(len(stripped), 1) > 0.35:
+        score -= 2
+
+    if _looks_like_table_row(stripped):
+        score -= 3
+
+    if next_line:
+        next_stripped = next_line.strip()
+        if len(next_stripped) > max(len(stripped) + 10, 35):
+            score += 1
+        if _looks_like_table_row(next_stripped):
+            score -= 1
+
+    return score
+
+
+def _is_section_title(line: str, next_line: str = "") -> bool:
+    return _score_section_title(line, next_line) >= 3
 
 
 def _make_chunk_id(source: str, page_num: int, idx: int, text_prefix: str) -> str:
@@ -66,24 +137,11 @@ def _make_chunk_id(source: str, page_num: int, idx: int, text_prefix: str) -> st
 
 def _build_context_prefix(source: str, context_meta: Dict, section_title: str = "") -> str:
     """
-    构建注入到 chunk 头部的上下文标签，例如：
-      [公司: 比亚迪, 股票代码: 002594, 报告期: 2024年Q4, 章节: 主要财务数据, 来源: xxx.pdf]
+    构建注入到 chunk 头部的轻量上下文，仅保留当前章节。
     """
-    parts = []
-    if context_meta.get("company"):
-        parts.append(f"公司: {context_meta['company']}")
-    if context_meta.get("stock_code"):
-        parts.append(f"股票代码: {context_meta['stock_code']}")
-    year = context_meta.get("year")
-    if year:
-        period = f"{year}年"
-        if context_meta.get("quarter"):
-            period += context_meta["quarter"]
-        parts.append(f"报告期: {period}")
     if section_title:
-        parts.append(f"章节: {section_title}")
-    parts.append(f"来源: {source}")
-    return "[" + ", ".join(parts) + "]\n"
+        return f"当前章节：{section_title}\n"
+    return ""
 
 
 def _split_into_sections(text: str) -> List[Dict]:
@@ -96,8 +154,9 @@ def _split_into_sections(text: str) -> List[Dict]:
     current_title = ""
     current_lines: List[str] = []
 
-    for line in lines:
-        if _is_section_title(line):
+    for idx, line in enumerate(lines):
+        next_line = lines[idx + 1] if idx + 1 < len(lines) else ""
+        if _is_section_title(line, next_line):
             # 保存已累积的段落
             body = "\n".join(current_lines).strip()
             if body:
@@ -116,10 +175,143 @@ def _split_into_sections(text: str) -> List[Dict]:
 
 
 # ---------------------------------------------------------------------------
-# 核心切分函数
+# 核心切分函数 (Markdown & 纯文本双轨支持)
 # ---------------------------------------------------------------------------
 
 def logical_chunk(
+    pages: List[Dict],
+    strategy: str = "auto",
+    chunk_size: int = 512,
+    chunk_overlap: int = 64,
+    context_meta: Optional[Dict] = None,
+    is_markdown: bool = False,
+) -> List[Dict]:
+    """
+    通用逻辑切分入口。
+
+    Args:
+        pages:        页面列表，对于 is_markdown=True，预期只有一条记录 `[{"text": "完整markdown内容", "source": "xxx"}]`
+        strategy:     切分策略
+                        "auto"    — 自动策略
+                        "section" — 仅章节切分
+                        "fixed"   — 纯固定字符数
+        chunk_size:   单块最大字符数
+        chunk_overlap:块间重叠字符数
+        context_meta: 注入上下文的元信息字典，可含 company/year/quarter/stock_code
+        is_markdown:  指示传入的 text 是否是结构化的 Markdown。如果是，将使用 MarkdownHeaderTextSplitter。
+
+    Returns:
+        chunks 列表，每项含 id / text / metadata
+    """
+    if is_markdown:
+        return _logical_chunk_markdown(
+            pages, chunk_size, chunk_overlap, context_meta
+        )
+
+    return _logical_chunk_plaintext(
+        pages, strategy, chunk_size, chunk_overlap, context_meta
+    )
+
+
+def _logical_chunk_markdown(
+    pages: List[Dict],
+    chunk_size: int = 512,
+    chunk_overlap: int = 64,
+    context_meta: Optional[Dict] = None,
+) -> List[Dict]:
+    """
+    使用 MarkdownHeaderTextSplitter 基于预处理的 Markdown 结构进行高精度切分。
+    """
+    meta = context_meta or {}
+    
+    # 估算前缀长度
+    _sample_prefix = _build_context_prefix("x" * 40, meta, "x" * 30)
+    prefix_budget = len(_sample_prefix) + 10
+    effective_chunk_size = max(chunk_size - prefix_budget, 200)
+
+    # 1. 按照 Markdown 层级切分
+    headers_to_split_on = [
+        ("#", "Header 1"),
+        ("##", "Header 2"),
+        ("###", "Header 3"),
+    ]
+    markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
+
+    # 2. 如果单块过长，再次字符切分兜底
+    char_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=effective_chunk_size,
+        chunk_overlap=chunk_overlap,
+        separators=["\n\n", "\n", "。", "；", ".", ";", " ", ""],
+        length_function=len,
+    )
+
+    chunks: List[Dict] = []
+    global_idx = 0
+
+    for page in pages:
+        source = page.get("source", "unknown")
+        # 针对 Markdown 模式，我们不再依赖精确的 page_number（因为它是全文档融合的）
+        page_num = page.get("page_number", 1) 
+        text = page.get("text", "")
+
+        if not text.strip():
+            continue
+
+        md_splits = markdown_splitter.split_text(text)
+
+        for split in md_splits:
+            content = split.page_content.strip()
+            if not content:
+                continue
+
+            # 拼装层级路径，例如： "第一节 业务回顾 -> 核心业务情况"
+            path_parts = []
+            for h in ["Header 1", "Header 2", "Header 3"]:
+                if h in split.metadata:
+                    path_parts.append(split.metadata[h])
+            section_title = " -> ".join(path_parts) if path_parts else ""
+
+            prefix = _build_context_prefix(source, meta, section_title)
+            
+            # 是否需要二次兜底切分
+            if len(prefix) + len(content) <= chunk_size:
+                chunk_id = _make_chunk_id(source, page_num, global_idx, content)
+                chunks.append({
+                    "id": chunk_id,
+                    "text": prefix + content,
+                    "metadata": {
+                        "source": source,
+                        "page_number": page_num,
+                        "chunk_index": global_idx,
+                        "is_table": "|" in content and "-|-" in content, # 粗略判定是否包含MD表格
+                        "section_title": section_title,
+                        **_filter_meta(meta),
+                    }
+                })
+                global_idx += 1
+            else:
+                # 段落超长：二次固定切分，每块复用同一 prefix
+                sub_texts = char_splitter.split_text(content)
+                for sub in sub_texts:
+                    chunk_id = _make_chunk_id(source, page_num, global_idx, sub)
+                    chunks.append({
+                        "id": chunk_id,
+                        "text": prefix + sub,
+                        "metadata": {
+                            "source": source,
+                            "page_number": page_num,
+                            "chunk_index": global_idx,
+                            "is_table": "|" in sub and "-|-" in sub,
+                            "section_title": section_title,
+                            **_filter_meta(meta),
+                        }
+                    })
+                    global_idx += 1
+
+    return chunks
+
+
+def _logical_chunk_plaintext(
     pages: List[Dict],
     strategy: str = "auto",
     chunk_size: int = 512,
