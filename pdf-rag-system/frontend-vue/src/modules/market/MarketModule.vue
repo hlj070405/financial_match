@@ -1252,32 +1252,29 @@ const fetchIndexOverview = async () => {
 
 
 
-let fetchLock = null
+let fetchLock = 0
+
+const _sleep = (ms) => new Promise(r => setTimeout(r, ms))
 
 const fetchStockData = async () => {
 
   if (!currentTsCode.value) return
 
   const code = currentTsCode.value
-  
-  // 如果有正在进行的请求，取消它
-  if (fetchLock && fetchLock !== code) {
-    console.log('[DEBUG] 取消旧请求:', fetchLock, '-> 新请求:', code)
-  }
-  fetchLock = code
+  const token = ++fetchLock
 
   chartLoading.value = true
   basicLoading.value = true
   moneyflowLoading.value = true
   finLoading.value = true
+
   const fetchFn = activePeriod.value === 'weekly'
     ? tushareApi.getWeekly
     : activePeriod.value === 'monthly'
       ? tushareApi.getMonthly
       : tushareApi.getDaily
 
-  // 全部并行请求
-  console.log('[DEBUG] 开始请求数据, code:', code)
+  // 第一次并行请求
   const [klineRes, basicRes, mfRes, bRes, cRes] = await Promise.allSettled([
     fetchFn(code),
     tushareApi.getDailyBasic(code),
@@ -1285,17 +1282,13 @@ const fetchStockData = async () => {
     tushareApi.getBalancesheet(code),
     tushareApi.getCashflow(code),
   ])
-  console.log('[DEBUG] 请求完成:', code)
 
-  // 检查是否是当前股票的请求，如果不是则丢弃结果
-  if (fetchLock !== code) {
-    console.log('[DEBUG] 丢弃过期请求结果:', code, '当前:', fetchLock)
-    return
-  }
+  if (token !== fetchLock) return
 
   // K线
   if (klineRes.status === 'fulfilled') {
-    klineData.value = klineRes.value.data || []
+    const d = klineRes.value.data || []
+    if (d.length > 0 && !d[0]?.error) klineData.value = d
   } else { console.error('K线:', klineRes.reason) }
   chartLoading.value = false
   await nextTick()
@@ -1304,13 +1297,14 @@ const fetchStockData = async () => {
   // 每日指标
   if (basicRes.status === 'fulfilled') {
     const d = basicRes.value.data
-    dailyBasicData.value = (d && d.length > 0) ? d[0] : null
+    if (d && d.length > 0 && !d[0]?.error) dailyBasicData.value = d[0]
   } else { console.error('指标:', basicRes.reason) }
   basicLoading.value = false
 
   // 资金流向
   if (mfRes.status === 'fulfilled') {
-    moneyflowData.value = mfRes.value.data || []
+    const d = mfRes.value.data || []
+    if (d.length > 0 && !d[0]?.error) moneyflowData.value = d
   } else { console.error('资金流:', mfRes.reason) }
   moneyflowLoading.value = false
   await nextTick()
@@ -1318,20 +1312,52 @@ const fetchStockData = async () => {
 
   // 财务
   if (bRes.status === 'fulfilled') {
-    console.log('[DEBUG] bRes.value:', JSON.stringify(bRes.value).slice(0, 200))
-    balanceData.value = bRes.value.data || []
-    console.log('[DEBUG] balanceData:', balanceData.value.length, '条')
-  } else {
-    console.error('资产负债表:', bRes.reason)
-  }
+    const d = bRes.value.data || []
+    if (d.length > 0 && !d[0]?.error) balanceData.value = d
+  } else { console.error('资产负债表:', bRes.reason) }
   if (cRes.status === 'fulfilled') {
-    console.log('[DEBUG] cRes.value:', JSON.stringify(cRes.value).slice(0, 200))
-    cashflowData_raw.value = cRes.value.data || []
-    console.log('[DEBUG] cashflowData:', cashflowData_raw.value.length, '条')
-  } else {
-    console.error('现金流量表:', cRes.reason)
-  }
+    const d = cRes.value.data || []
+    if (d.length > 0 && !d[0]?.error) cashflowData_raw.value = d
+  } else { console.error('现金流量表:', cRes.reason) }
   finLoading.value = false
+
+  // 空数据重试（最多3轮，间隔2秒）
+  for (let round = 0; round < 3; round += 1) {
+    if (token !== fetchLock) return
+    const needK = klineData.value.length === 0
+    const needB = !dailyBasicData.value
+    const needMf = moneyflowData.value.length === 0
+    const needBal = balanceData.value.length === 0
+    const needCf = cashflowData_raw.value.length === 0
+    if (!needK && !needB && !needMf && !needBal && !needCf) break
+
+    await _sleep(2000)
+    if (token !== fetchLock) return
+
+    const tasks = []
+    const labels = []
+    if (needK) { tasks.push(fetchFn(code)); labels.push('k') }
+    if (needB) { tasks.push(tushareApi.getDailyBasic(code)); labels.push('b') }
+    if (needMf) { tasks.push(tushareApi.getMoneyflow(code)); labels.push('mf') }
+    if (needBal) { tasks.push(tushareApi.getBalancesheet(code)); labels.push('bal') }
+    if (needCf) { tasks.push(tushareApi.getCashflow(code)); labels.push('cf') }
+
+    const retries = await Promise.allSettled(tasks)
+    if (token !== fetchLock) return
+
+    for (let i = 0; i < retries.length; i += 1) {
+      const res = retries[i]
+      if (res.status !== 'fulfilled') continue
+      const d = res.value.data || []
+      if (d.length === 0 || d[0]?.error) continue
+      const label = labels[i]
+      if (label === 'k') { klineData.value = d; await nextTick(); renderKlineChart() }
+      if (label === 'b') { dailyBasicData.value = d[0] }
+      if (label === 'mf') { moneyflowData.value = d; await nextTick(); renderMoneyflowChart() }
+      if (label === 'bal') { balanceData.value = d }
+      if (label === 'cf') { cashflowData_raw.value = d }
+    }
+  }
 
 }
 

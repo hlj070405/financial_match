@@ -6,31 +6,24 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import List
 
-# 设置国内 Hugging Face 镜像源，解决下载模型超时问题
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-# 禁用 CUDA，避免多进程运行 docling 时出现 CUDA 错误
-os.environ["CUDA_VISIBLE_DEVICES"] = ""
-
-from docling.document_converter import DocumentConverter
+import pymupdf4llm
 
 def convert_single_pdf(pdf_path: str) -> bool:
     """转换单个 PDF 为 Markdown"""
     try:
         print(f"[{os.getpid()}] 开始处理: {os.path.basename(pdf_path)}")
         start_time = time.time()
-        
-        converter = DocumentConverter()
-        result = converter.convert(pdf_path)
-        md_content = result.document.export_to_markdown()
-        
+
+        md_content = pymupdf4llm.to_markdown(pdf_path)
+
         # 将生成的 md 保存到同一目录下
         base_name = os.path.splitext(os.path.basename(pdf_path))[0]
         out_dir = os.path.dirname(pdf_path)
         out_path = os.path.join(out_dir, f"{base_name}.md")
-        
+
         with open(out_path, "w", encoding="utf-8") as f:
             f.write(md_content)
-            
+
         elapsed = time.time() - start_time
         print(f"[{os.getpid()}] ✅ 完成: {os.path.basename(pdf_path)} (耗时: {elapsed:.2f}s, 大小: {len(md_content)} 字符)")
         return True
@@ -59,9 +52,6 @@ def batch_convert(source_dir: str, workers: int = 2):
     pending_files = []
     for pdf_path in pdf_files:
         md_path = pdf_path.with_suffix(".md")
-        # 排除以 _docling 结尾的文件，这是我们之前测试生成的
-        if str(md_path).endswith("_docling.md"):
-            continue
         if not md_path.exists():
             pending_files.append(str(pdf_path))
         else:

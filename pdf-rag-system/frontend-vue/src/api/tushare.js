@@ -1,6 +1,6 @@
 const BASE_URL = '/api/tushare'
 const WATCHLIST_URL = '/api/watchlist'
-const REQUEST_TIMEOUT_MS = 12000
+const REQUEST_TIMEOUT_MS = 30000
 
 function getHeaders() {
   const token = localStorage.getItem('access_token')
@@ -18,7 +18,7 @@ async function request(path, params = {}) {
   const url = `${BASE_URL}${path}${qs ? '?' + qs : ''}`
 
   let lastError = null
-  for (let i = 0; i < 2; i += 1) {
+  for (let i = 0; i < 3; i += 1) {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS)
     try {
@@ -27,7 +27,8 @@ async function request(path, params = {}) {
       return await res.json()
     } catch (err) {
       lastError = err
-      if (i === 1) break
+      if (i === 2) break
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)))
     } finally {
       clearTimeout(timer)
     }

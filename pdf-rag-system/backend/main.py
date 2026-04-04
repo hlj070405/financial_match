@@ -3,9 +3,19 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from config import FINANCIAL_REPORTS_DIR
-from database import init_db
-from routers import auth, chat, file, economic, hotspot, tushare, diagnosis, watchlist, agent, rag, chain
+from core.config import FINANCIAL_REPORTS_DIR
+from core.database import init_db
+from auth.api import router as auth_router
+from chat.api import router as chat_router
+from report.api import router as report_router
+from economic.api import router as economic_router
+from hotspot.api import router as hotspot_router
+from market.api import router as market_router
+from market.watchlist_api import router as watchlist_router
+from diagnosis.api import router as diagnosis_router
+from agent.api import router as agent_router
+from rag.api import router as rag_router
+from agent.chain_api import router as chain_router
 
 app = FastAPI(title="PDF RAG Analysis System")
 
@@ -34,17 +44,17 @@ if not os.path.exists(FINANCIAL_REPORTS_DIR):
 app.mount("/financial_reports", StaticFiles(directory=FINANCIAL_REPORTS_DIR), name="financial_reports")
 
 # 注册路由
-app.include_router(auth.router)
-app.include_router(chat.router)
-app.include_router(file.router)
-app.include_router(economic.router)
-app.include_router(hotspot.router)
-app.include_router(tushare.router)
-app.include_router(diagnosis.router)
-app.include_router(watchlist.router)
-app.include_router(agent.router)
-app.include_router(rag.router)
-app.include_router(chain.router)
+app.include_router(auth_router)
+app.include_router(chat_router)
+app.include_router(report_router)
+app.include_router(economic_router)
+app.include_router(hotspot_router)
+app.include_router(market_router)
+app.include_router(watchlist_router)
+app.include_router(diagnosis_router)
+app.include_router(agent_router)
+app.include_router(rag_router)
+app.include_router(chain_router)
 
 
 @app.get("/health")

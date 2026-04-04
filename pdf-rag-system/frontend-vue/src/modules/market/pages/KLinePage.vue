@@ -282,6 +282,17 @@ const pickStock = (s) => {
   fetchStockData()
 }
 
+const loadStock = () => {
+  const q = searchText.value.trim()
+  if (!q) return
+  const matched = allStocks.value.find(s =>
+    s.ts_code.toLowerCase() === q.toLowerCase() ||
+    s.symbol === q ||
+    s.name === q
+  ) || suggestions.value[0]
+  if (matched) pickStock(matched)
+}
+
 // ============ Data Fetching ============
 const fetchStockData = async () => {
   if (!currentTsCode.value) return
@@ -361,38 +372,36 @@ const fetchStockData = async () => {
     console.error('资金流:', mfRes.reason)
   }
 
-  let kStable = hasRows(klineData.value)
-  let bStable = !!dailyBasicData.value
-  let mStable = hasRows(moneyflowData.value)
-  const maxRetryRounds = 120
-
+  // 最多重试3轮，间隔2秒，直接采用数据无需双次确认
+  const maxRetryRounds = 3
   for (let round = 0; round < maxRetryRounds; round += 1) {
     if (currentToken !== fetchToken) return
-    if (kStable && bStable && mStable) break
+    const needK = !hasRows(klineData.value)
+    const needB = !dailyBasicData.value
+    const needM = !hasRows(moneyflowData.value)
+    if (!needK && !needB && !needM) break
 
-    await sleep(1200)
+    await sleep(2000)
     if (currentToken !== fetchToken) return
 
     const tasks = []
     const labels = []
-
-    if (!kStable) {
+    if (needK) {
       const days = activePeriod.value === 'monthly' ? 365 * 3 : activePeriod.value === 'weekly' ? 365 : 90
       const { start_date, end_date } = getRange(days)
       tasks.push(fetchFn(code, start_date, end_date))
       labels.push('k')
     }
-    if (!bStable) {
-      tasks.push(tushareApi.getDailyBasic(code, ymd(new Date())))
+    if (needB) {
+      tasks.push(tushareApi.getDailyBasic(code))
       labels.push('b')
     }
-    if (!mStable) {
+    if (needM) {
       const { start_date, end_date } = getRange(30)
       tasks.push(tushareApi.getMoneyflow(code, start_date, end_date))
       labels.push('m')
     }
 
-    if (tasks.length === 0) break
     const results = await Promise.allSettled(tasks)
     if (currentToken !== fetchToken) return
 
@@ -400,54 +409,11 @@ const fetchStockData = async () => {
       const label = labels[i]
       const res = results[i]
       if (res.status !== 'fulfilled') continue
-      const parsed = extractRows(res.value)
-      const rows = parsed.rows
-      if (parsed.error) console.error(`${label}轮询API错误:`, parsed.error)
+      const { rows } = extractRows(res.value)
       if (!hasRows(rows)) continue
-
-      if (label === 'k') {
-        const sig1 = calcSig(rows, ['trade_date', 'close'])
-        const confirm = await fetchFn(code, ...(activePeriod.value === 'monthly'
-          ? [getRange(365 * 3).start_date, getRange(365 * 3).end_date]
-          : activePeriod.value === 'weekly'
-            ? [getRange(365).start_date, getRange(365).end_date]
-            : [getRange(90).start_date, getRange(90).end_date]))
-        const parsed2 = extractRows(confirm)
-        const rows2 = parsed2.rows
-        if (parsed2.error) console.error('K线确认API错误:', parsed2.error)
-        const sig2 = calcSig(rows2, ['trade_date', 'close'])
-        if (hasRows(rows2) && sig1 === sig2) {
-          klineData.value = rows2
-          kStable = true
-        }
-      }
-
-      if (label === 'b') {
-        const sig1 = calcSig(rows, ['trade_date', 'close', 'pe_ttm'])
-        const confirm = await tushareApi.getDailyBasic(code, ymd(new Date()))
-        const parsed2 = extractRows(confirm)
-        const rows2 = parsed2.rows
-        if (parsed2.error) console.error('日指标确认API错误:', parsed2.error)
-        const sig2 = calcSig(rows2, ['trade_date', 'close', 'pe_ttm'])
-        if (hasRows(rows2) && sig1 === sig2) {
-          dailyBasicData.value = rows2[0]
-          bStable = true
-        }
-      }
-
-      if (label === 'm') {
-        const sig1 = calcSig(rows, ['trade_date', 'buy_sm_amount', 'sell_sm_amount'])
-        const { start_date, end_date } = getRange(30)
-        const confirm = await tushareApi.getMoneyflow(code, start_date, end_date)
-        const parsed2 = extractRows(confirm)
-        const rows2 = parsed2.rows
-        if (parsed2.error) console.error('资金流确认API错误:', parsed2.error)
-        const sig2 = calcSig(rows2, ['trade_date', 'buy_sm_amount', 'sell_sm_amount'])
-        if (hasRows(rows2) && sig1 === sig2) {
-          moneyflowData.value = rows2
-          mStable = true
-        }
-      }
+      if (label === 'k') klineData.value = rows
+      if (label === 'b') dailyBasicData.value = rows[0]
+      if (label === 'm') moneyflowData.value = rows
     }
   }
 
