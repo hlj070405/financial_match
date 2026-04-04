@@ -1891,15 +1891,7 @@ const renderMoneyflowChart = () => {
 
   const dates = moneyflowData.value.map(d => d.trade_date)
 
-  const netMf = moneyflowData.value.map(d => {
-
-    const inflow = (d.buy_sm_amount || 0) + (d.buy_md_amount || 0) + (d.buy_lg_amount || 0) + (d.buy_elg_amount || 0)
-
-    const outflow = (d.sell_sm_amount || 0) + (d.sell_md_amount || 0) + (d.sell_lg_amount || 0) + (d.sell_elg_amount || 0)
-
-    return +(inflow - outflow).toFixed(2)
-
-  })
+  const netMf = moneyflowData.value.map(d => +(d.net_mf_amount || 0).toFixed(2))
 
 
 
@@ -1923,7 +1915,7 @@ const renderMoneyflowChart = () => {
 
         const v = params[0]
 
-        return `${v.name}<br/>净流入: <b style="color:${v.value >= 0 ? '#ef4444' : '#10b981'}">${formatNum(v.value)}万</b>`
+        return `${v.name}<br/>净流入: <b style="color:${v.value >= 0 ? '#ef4444' : '#10b981'}">${formatWanYi(v.value)}</b>`
 
       }
 
@@ -1951,7 +1943,12 @@ const renderMoneyflowChart = () => {
 
       axisLine: { show: false }, axisTick: { show: false },
 
-      axisLabel: { color: '#9ca3af', fontSize: 9 }
+      axisLabel: { color: '#9ca3af', fontSize: 9, formatter: (v) => {
+        const abs = Math.abs(v)
+        if (abs >= 1e4) return (v / 1e4).toFixed(1) + '亿'
+        if (abs >= 1) return v.toFixed(0) + '万'
+        return ''
+      }}
 
     },
 

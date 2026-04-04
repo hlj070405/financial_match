@@ -1486,81 +1486,89 @@ const formatMessage = (content) => {
 
 }
 
-const exportToPdf = async (message, index) => {
+const exportToPdf = (message, index) => {
   if (message._exporting) return
   message._exporting = true
 
   try {
     const htmlContent = formatMessage(message.content)
 
-    // 提取首行作为文件名
     const firstLine = message.content.split('\n').find(l => l.trim()) || '分析报告'
     const fileName = firstLine.replace(/^#+\s*/, '').replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 50) || '分析报告'
 
-    // 构建带完整样式的 HTML
-    const wrapper = document.createElement('div')
-    wrapper.innerHTML = `
-      <div style="padding: 40px 50px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #1e293b; line-height: 1.8; max-width: 100%;">
-        <!-- 页眉 -->
-        <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; margin-bottom: 24px; border-bottom: 2px solid #6366f1;">
-          <div>
-            <span style="font-size: 18px; font-weight: 700; background: linear-gradient(135deg, #6366f1, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Phantom Flow</span>
-            <span style="font-size: 12px; color: #94a3b8; margin-left: 8px;">幻流 · 智能金融分析</span>
-          </div>
-          <div style="font-size: 11px; color: #94a3b8;">${new Date().toLocaleString('zh-CN')}</div>
-        </div>
+    const printWin = window.open('', '_blank', 'width=900,height=700')
+    if (!printWin) {
+      alert('请允许弹出窗口后重试')
+      message._exporting = false
+      return
+    }
 
-        <!-- 正文 -->
-        <div class="pdf-body">${htmlContent}</div>
-
-        <!-- 页脚 -->
-        <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #94a3b8; text-align: center;">
-          本报告由 Phantom Flow 智能分析系统自动生成，仅供参考，不构成投资建议。
-        </div>
-      </div>
-    `
-
-    // 注入 PDF 专用样式
-    const style = document.createElement('style')
-    style.textContent = `
-      .pdf-body h1 { font-size: 22px; font-weight: 700; color: #0f172a; margin: 24px 0 12px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
-      .pdf-body h2 { font-size: 18px; font-weight: 700; color: #1e293b; margin: 20px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9; }
-      .pdf-body h3 { font-size: 15px; font-weight: 600; color: #334155; margin: 16px 0 8px; }
-      .pdf-body h4 { font-size: 13px; font-weight: 600; color: #475569; margin: 12px 0 6px; }
-      .pdf-body p { font-size: 13px; color: #475569; margin: 8px 0; }
-      .pdf-body strong { color: #1e293b; }
-      .pdf-body ul, .pdf-body ol { padding-left: 20px; margin: 8px 0; }
-      .pdf-body li { font-size: 13px; color: #475569; margin: 4px 0; }
-      .pdf-body table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 12px; }
-      .pdf-body th, .pdf-body td { border: 1px solid #e2e8f0; padding: 6px 10px; text-align: left; word-break: break-word; }
-      .pdf-body th { background: #f8fafc; font-weight: 600; color: #1e293b; }
-      .pdf-body tr:nth-child(even) { background: #f8fafc; }
-      .pdf-body blockquote { border-left: 3px solid #6366f1; padding: 8px 16px; margin: 12px 0; background: #f8fafc; color: #475569; font-size: 13px; }
-      .pdf-body code { background: #f1f5f9; padding: 1px 4px; border-radius: 3px; font-size: 12px; color: #6366f1; }
-      .pdf-body pre { background: #1e293b; color: #e2e8f0; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 12px; }
-    `
-    wrapper.prepend(style)
-
-    // 临时插入 DOM（html2pdf 需要）
-    wrapper.style.position = 'fixed'
-    wrapper.style.left = '-9999px'
-    wrapper.style.top = '0'
-    wrapper.style.width = '210mm'
-    document.body.appendChild(wrapper)
-
-    await html2pdf()
-      .set({
-        margin: 0,
-        filename: `${fileName}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, letterRendering: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-      })
-      .from(wrapper)
-      .save()
-
-    document.body.removeChild(wrapper)
+    printWin.document.write(`<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>${fileName}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      color: #1e293b; line-height: 1.8; margin: 0;
+      padding: 40px 56px; max-width: 860px; margin: 0 auto;
+    }
+    .header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding-bottom: 16px; margin-bottom: 28px; border-bottom: 2px solid #6366f1;
+    }
+    .brand { font-size: 18px; font-weight: 700; color: #6366f1; }
+    .brand-sub { font-size: 12px; color: #94a3b8; margin-left: 8px; }
+    .actions { display: flex; align-items: center; gap: 10px; }
+    .date { font-size: 11px; color: #94a3b8; }
+    .print-btn {
+      background: #6366f1; color: #fff; border: none; border-radius: 6px;
+      padding: 6px 10px; font-size: 12px; cursor: pointer;
+    }
+    .print-btn:hover { opacity: 0.9; }
+    h1 { font-size: 20px; font-weight: 700; color: #0f172a; margin: 24px 0 12px; padding-bottom: 8px; border-bottom: 2px solid #e2e8f0; }
+    h2 { font-size: 17px; font-weight: 700; color: #1e293b; margin: 20px 0 10px; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9; }
+    h3 { font-size: 14px; font-weight: 600; color: #334155; margin: 16px 0 8px; }
+    h4 { font-size: 13px; font-weight: 600; color: #475569; margin: 12px 0 6px; }
+    p { font-size: 13px; color: #475569; margin: 8px 0; }
+    strong { color: #1e293b; }
+    ul, ol { padding-left: 22px; margin: 8px 0; }
+    li { font-size: 13px; color: #475569; margin: 4px 0; }
+    table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 12px; }
+    th, td { border: 1px solid #e2e8f0; padding: 7px 10px; text-align: left; word-break: break-word; }
+    th { background: #f8fafc; font-weight: 600; color: #1e293b; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    blockquote { border-left: 3px solid #6366f1; padding: 8px 16px; margin: 12px 0; background: #f8fafc; color: #475569; font-size: 13px; }
+    code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-size: 12px; color: #6366f1; font-family: 'Courier New', Consolas, monospace; }
+    pre { background: #1e293b; color: #e2e8f0; padding: 16px; border-radius: 8px; font-size: 12px; overflow-x: auto; }
+    pre code { background: none; color: inherit; padding: 0; }
+    .footer { margin-top: 36px; padding-top: 14px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #94a3b8; text-align: center; }
+    @media print {
+      @page { size: A4; margin: 14mm 16mm; }
+      body { padding: 0; }
+      pre { white-space: pre-wrap; }
+      .print-btn { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <span class="brand">Phantom Flow</span>
+      <span class="brand-sub">幻流 · 智能金融分析</span>
+    </div>
+    <div class="actions">
+      <div class="date">${new Date().toLocaleString('zh-CN')}</div>
+      <button class="print-btn" onclick="window.print()">保存为 PDF</button>
+    </div>
+  </div>
+  ${htmlContent}
+  <div class="footer">本报告由 Phantom Flow 智能分析系统自动生成，仅供参考，不构成投资建议。</div>
+</body>
+</html>`)
+    printWin.document.close()
   } catch (err) {
     console.error('PDF 导出失败:', err)
     alert('PDF 导出失败: ' + err.message)

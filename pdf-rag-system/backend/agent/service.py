@@ -98,7 +98,7 @@ def clear_analysis(ts_code: str):
 def _collect_stock_data(ts_code: str) -> Dict:
     """通过 TushareService 拉取最新数据，精简后给模型"""
     from datetime import datetime, timedelta
-    from services.tushare_service import TushareService
+    from market.tushare_service import TushareService
 
     collected = {}
     today = datetime.now().strftime("%Y%m%d")
@@ -326,7 +326,11 @@ def stream_analyze(stock_name: str, ts_code: str):
 
     # 阶段1: 收集数据
     yield f"data: {json.dumps({'type': 'phase', 'content': '正在收集行情数据...'}, ensure_ascii=False)}\n\n"
-    stock_data = _collect_stock_data(ts_code)
+    try:
+        stock_data = _collect_stock_data(ts_code)
+    except Exception as e:
+        traceback.print_exc()
+        stock_data = {}
     data_summary = json.dumps(stock_data, ensure_ascii=False, indent=1)
     if len(data_summary) > 8000:
         data_summary = data_summary[:8000] + "\n... (数据已截断)"
