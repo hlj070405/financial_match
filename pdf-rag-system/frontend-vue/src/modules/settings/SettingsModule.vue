@@ -11,12 +11,10 @@
         <p class="text-xs text-gray-400 mt-1">勾选模块启用/关闭，点击展开可调整子功能</p>
       </div>
 
-      <!-- Module Categories -->
-      <div v-for="cat in categories" :key="cat.id" class="mb-5">
-        <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2.5 px-1">{{ cat.label }}</h3>
-        <div class="space-y-2">
+      <!-- Modules -->
+      <div class="space-y-2">
           <div
-            v-for="mod in getModulesByCategory(cat.id)"
+            v-for="mod in ALL_MODULES"
             :key="mod.id"
             class="bg-white rounded-xl border transition-all duration-200"
             :class="isModuleEnabled(mod.id) ? 'border-blue-200 shadow-sm' : 'border-gray-100'"
@@ -53,13 +51,10 @@
               <div
                 v-for="feat in mod.features"
                 :key="feat.id"
-                class="flex items-start gap-3 py-2 px-2 rounded-lg transition-colors"
-                :class="isFeatureAvailable(feat) ? 'hover:bg-gray-50' : 'opacity-60'"
+                class="flex items-start gap-3 py-2 px-2 rounded-lg transition-colors hover:bg-gray-50"
               >
-                <!-- Feature toggle -->
                 <div class="mt-0.5">
                   <button
-                    v-if="isFeatureAvailable(feat)"
                     @click="toggleFeature(feat.id)"
                     class="w-4 h-4 rounded border flex items-center justify-center transition-colors"
                     :class="isFeatureEnabled(feat.id) ? 'bg-blue-600 border-blue-600' : 'border-gray-300 bg-white hover:border-gray-400'"
@@ -68,23 +63,14 @@
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
                     </svg>
                   </button>
-                  <div v-else class="w-4 h-4 rounded border border-gray-200 bg-gray-50 flex items-center justify-center">
-                    <svg class="w-2.5 h-2.5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-                    </svg>
-                  </div>
                 </div>
                 <div class="flex-1 min-w-0">
                   <div class="text-[12px] font-medium text-gray-800">{{ feat.name }}</div>
                   <div class="text-[11px] text-gray-500 leading-relaxed mt-0.5">{{ feat.desc }}</div>
-                  <div v-if="!isFeatureAvailable(feat)" class="mt-1 text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full inline-block">
-                    该功能主要面向 {{ feat.targetLabel }}
-                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
       </div>
 
       <!-- Save -->
@@ -113,7 +99,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { 
-  ALL_MODULES, CATEGORIES, ROLES, 
+  ALL_MODULES, ROLES, 
   getEnabledModules, saveEnabledModules,
   getEnabledFeatures, saveEnabledFeatures, getDefaultFeaturesForRole,
   getUserRole 
@@ -127,29 +113,17 @@ const enabledFeatureIds = ref([])
 const expandedModules = ref(new Set())
 const showSaved = ref(false)
 
-const categories = CATEGORIES
-
 const currentRoleId = computed(() => getUserRole())
 
 const currentRoleName = computed(() => {
   const roleId = currentRoleId.value
   if (!roleId || !ROLES[roleId]) return '未选择'
-  return `${ROLES[roleId].groupName} · ${ROLES[roleId].name}`
+  return ROLES[roleId].name
 })
-
-const getModulesByCategory = (catId) => {
-  return ALL_MODULES.filter(m => m.category === catId)
-}
 
 const isModuleEnabled = (id) => enabledModuleIds.value.includes(id)
 const isFeatureEnabled = (id) => enabledFeatureIds.value.includes(id)
 const isExpanded = (id) => expandedModules.value.has(id)
-
-const isFeatureAvailable = (feat) => {
-  const roleId = currentRoleId.value
-  if (!roleId) return true
-  return feat.roles.includes(roleId)
-}
 
 const toggleModule = (id) => {
   const idx = enabledModuleIds.value.indexOf(id)

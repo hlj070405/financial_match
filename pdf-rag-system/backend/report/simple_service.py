@@ -97,55 +97,42 @@ class SimplifiedReportService:
                 "isHLtitle": "true"
             }
             
-            print(f"[下载] 查询 {company_name}({stock_code}) {report_info['description']}...")
-            print(f"[下载] 搜索范围: {start_date} ~ {end_date}")
-            print(f"[下载] 报告类型: {category}")
+            print(f"[下载] 查询巨潮: searchkey={data['searchkey']}, category={category}, seDate={data['seDate']}")
+            resp = await self.client.post(query_url, data=data)
             
-            response = await self.client.post(query_url, data=data)
-            
-            if response.status_code != 200:
-                print(f"[下载] 查询失败，状态码: {response.status_code}")
+            if resp.status_code != 200:
+                print(f"[下载] 巨潮查询失败, HTTP {resp.status_code}")
                 return None
             
-            data = response.json()
-            announcements = data.get('announcements', [])
+            result = resp.json()
+            announcements = result.get('announcements', [])
+            print(f"[下载] 返回公告数: {len(announcements)}")
             
             if not announcements:
-                print(f"[下载] 未找到年报公告")
+                print(f"[下载] 未找到任何公告")
                 return None
             
-            # 查找匹配的报告，并验证股票代码
-            target_report = None
+            # 通过标题关键词精确匹配目标报告
             title_keywords = ReportTimingService.get_report_title_keywords(report_info)
+            target_report = None
             
-            # 非正文报告的排除词（摘要、更正、补充等）
-            exclude_keywords = ["摘要", "更正", "补充", "提示性", "英文版"]
-
-            for announcement in announcements:
-                title = announcement.get('announcementTitle', '')
-                sec_code = announcement.get('secCode', '')
-                
-                # 验证股票代码是否匹配
+            for ann in announcements:
+                sec_code = ann.get('secCode', '')
+                title = ann.get('announcementTitle', '')
                 if sec_code != stock_code:
-                    print(f"[下载] 跳过不匹配的公告: {title} (代码: {sec_code})")
                     continue
-
-                # 排除摘要/更正等非正文报告
-                if any(ex in title for ex in exclude_keywords):
-                    print(f"[下载] 跳过非正文公告: {title}")
+                # 跳过摘要版，优先完整报告
+                if '摘要' in title:
                     continue
-                
-                # 使用关键词匹配报告
-                for keyword in title_keywords:
-                    if keyword in title:
-                        target_report = announcement
-                        print(f"[下载] 找到匹配的报告: {title}")
+                for kw in title_keywords:
+                    if kw in title:
+                        target_report = ann
+                        print(f"[下载] 精确匹配: {title}")
                         break
-                
                 if target_report:
                     break
             
-            # 如果没有找到精确匹配，尝试找第一个股票代码匹配的公告
+            # 兜底：按股票代码匹配第一条
             if not target_report:
                 for announcement in announcements:
                     sec_code = announcement.get('secCode', '')

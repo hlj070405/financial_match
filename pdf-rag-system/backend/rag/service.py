@@ -1055,7 +1055,36 @@ A股财报披露时间表：
 3. **fetch_financial_report 调用判断**：上方"参考文档内容"是系统预检索的全库结果，**不能作为该目标公司是否已入库的依据**。只要用户明确提到某公司且参考文档中没有该公司来源的内容，就必须调用 fetch_financial_report 获取该公司财报；不要因为"参考文档不为空"就跳过调用
 4. 收集到足够信息后，尽快生成最终分析报告，不要继续调用工具
 5. 初始检索结果只作为候选上下文；如果用户明确提到具体公司、股票代码或指定财报，必须核实参考文档来源中是否包含该公司，若无则立即调用 fetch_financial_report
-6. 当 fetch_financial_report 返回 document_id 时，后续 search_vector_store 必须优先传入 document_ids，在对应财报内定向检索"""
+6. 当 fetch_financial_report 返回 document_id 时，后续 search_vector_store 必须优先传入 document_ids，在对应财报内定向检索
+
+## 量化回测能力（run_backtest）
+你能将用户的**任意交易想法**翻译为量化策略并回测。以下场景应主动调用 run_backtest：
+- 用户描述具体买卖逻辑（"5日线上穿20日线就买"、"RSI低于30抄底"）
+- 用户问某只股票适不适合某种策略（"茅台用MACD策略效果怎样"）
+- 用户问个股技术面分析时，**主动附带一个经典策略的回测结果**作为技术面参考
+- 用户说"帮我回测"、"测一下"等
+
+**翻译原则：**
+1. 把用户的自然语言拆解为 buy_conditions + sell_conditions
+2. 不确定参数时用行业惯例默认值（如均线 5/20、RSI 14/30/70）
+3. 用户说"均线策略"但没说哪根线，默认用 sma(5) cross_above/cross_below sma(20)
+4. 用户说的策略不完整（只说了买没说卖），合理补全卖出条件
+
+**结果解读原则（重要）：**
+- 客观陈述回测数据：总收益、年化、夏普、最大回撤、交易频率
+- 结果不理想时**如实说明**，不要美化或归因于用户。例如："该策略在此标的上年化收益为负，夏普比率低于0.5，表现不佳"就是合适的表述
+- 分析策略本身的局限性（如趋势策略在震荡市失效、均值回归策略在单边行情中亏损），而非暗示用户选错了
+- 可以客观建议尝试其他参数或策略方向，但不要过度承诺
+
+**展示策略源码：**
+回测结果中包含 strategy_code 字段，你**必须**在回复中展示策略逻辑，让用户看到 AI 是如何翻译他们的交易想法的。
+
+**行业/板块多股回测：**
+当用户问的是行业或板块级别的问题（如"布林带策略对新能源汽车表现怎样"），你应该：
+1. 根据你的金融知识，选出该行业当前 3-5 只代表性个股（含股票代码），简要说明选择理由
+2. 对每只股票分别调用 run_backtest（使用相同策略条件）
+3. 汇总对比各股表现，用表格展示
+4. 给出行业级别的客观结论"""
 
     if context_text:
         system_prompt += f"""
@@ -1169,6 +1198,173 @@ AGENT_TOOLS = [
                     }
                 },
                 "required": ["company_name", "stock_code"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_backtest",
+            "description": """执行量化回测。将用户描述的任意交易策略翻译为买入/卖出条件并运行历史回测。
+
+## 条件格式
+每个条件是 {"left": "指标表达式", "op": "运算符", "right": "指标表达式或数字"}
+
+## 可用指标表达式
+- price: 当前收盘价
+- sma(N): N日简单均线，如 sma(5), sma(20), sma(60)
+- ema(N): N日指数均线
+- rsi(N): N日RSI指标，如 rsi(14)
+- macd(): MACD线(DIF)
+- macd_signal(): MACD信号线(DEA)
+- boll_upper(N): N日布林带上轨
+- boll_lower(N): N日布林带下轨
+- boll_mid(N): N日布林带中轨
+- volume: 成交量
+- volume_ma(N): N日均量
+
+## 可用运算符
+- ">", "<", ">=", "<=": 比较
+- "cross_above": 左侧从下方穿越右侧（金叉）
+- "cross_below": 左侧从上方穿越右侧（死叉）
+
+## 翻译示例
+用户说"5日线上穿20日线买入，下穿卖出":
+  buy_conditions: [{"left":"sma(5)","op":"cross_above","right":"sma(20)"}]
+  sell_conditions: [{"left":"sma(5)","op":"cross_below","right":"sma(20)"}]
+
+用户说"RSI低于30买入，高于70卖出":
+  buy_conditions: [{"left":"rsi(14)","op":"<","right":"30"}]
+  sell_conditions: [{"left":"rsi(14)","op":">","right":"70"}]
+
+用户说"价格跌破布林带下轨且成交量放大时买入":
+  buy_conditions: [{"left":"price","op":"<","right":"boll_lower(20)"},{"left":"volume","op":">","right":"volume_ma(20)"}]
+  buy_logic: "all"
+
+用户说"MACD金叉买入，死叉卖出":
+  buy_conditions: [{"left":"macd()","op":"cross_above","right":"macd_signal()"}]
+  sell_conditions: [{"left":"macd()","op":"cross_below","right":"macd_signal()"}]""",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ts_code": {
+                        "type": "string",
+                        "description": "股票代码(Tushare格式)，如 600519.SH(沪市) 或 000001.SZ(深市)"
+                    },
+                    "stock_name": {
+                        "type": "string",
+                        "description": "股票名称，如'贵州茅台'"
+                    },
+                    "strategy_name": {
+                        "type": "string",
+                        "description": "用户策略的简短描述，如'双均线金叉死叉'、'RSI超卖反弹+放量确认'"
+                    },
+                    "buy_conditions": {
+                        "type": "array",
+                        "description": "买入条件列表",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "left": {"type": "string"},
+                                "op": {"type": "string", "enum": [">", "<", ">=", "<=", "cross_above", "cross_below"]},
+                                "right": {"type": "string"}
+                            },
+                            "required": ["left", "op", "right"]
+                        }
+                    },
+                    "sell_conditions": {
+                        "type": "array",
+                        "description": "卖出条件列表",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "left": {"type": "string"},
+                                "op": {"type": "string", "enum": [">", "<", ">=", "<=", "cross_above", "cross_below"]},
+                                "right": {"type": "string"}
+                            },
+                            "required": ["left", "op", "right"]
+                        }
+                    },
+                    "buy_logic": {
+                        "type": "string",
+                        "description": "多个买入条件间的逻辑关系: all=全部满足(AND), any=任一满足(OR)，默认all",
+                        "enum": ["all", "any"]
+                    },
+                    "sell_logic": {
+                        "type": "string",
+                        "description": "多个卖出条件间的逻辑关系: all=全部满足(AND), any=任一满足(OR)，默认all",
+                        "enum": ["all", "any"]
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "回测起始日期 YYYY-MM-DD，默认近3年"
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "回测结束日期 YYYY-MM-DD，默认今天"
+                    },
+                    "initial_cash": {
+                        "type": "number",
+                        "description": "初始资金(元)，默认100000"
+                    }
+                },
+                "required": ["ts_code", "stock_name", "buy_conditions", "sell_conditions"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "portfolio_trade",
+            "description": "记录用户的虚拟买入/卖出操作。当用户说'买入XX股某某股票'或'卖出'时调用。系统会自动计算A股佣金和印花税。价格如果用户没说，请使用最新收盘价（可先联网搜索）。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ts_code": {
+                        "type": "string",
+                        "description": "股票代码(Tushare格式)，如 000001.SZ、600519.SH"
+                    },
+                    "stock_name": {
+                        "type": "string",
+                        "description": "股票名称"
+                    },
+                    "direction": {
+                        "type": "string",
+                        "description": "buy(买入) 或 sell(卖出)",
+                        "enum": ["buy", "sell"]
+                    },
+                    "price": {
+                        "type": "number",
+                        "description": "成交价格(元)。用户未指定则使用最新收盘价"
+                    },
+                    "quantity": {
+                        "type": "integer",
+                        "description": "交易数量(股)。A股最小交易单位100股"
+                    },
+                    "trade_date": {
+                        "type": "string",
+                        "description": "成交日期 YYYY-MM-DD，默认今天"
+                    }
+                },
+                "required": ["ts_code", "stock_name", "direction", "price", "quantity"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "portfolio_query",
+            "description": "查询用户的虚拟持仓情况。当用户问'我的持仓怎么样'、'我买了什么股票'、'我的收益如何'时调用。返回所有持仓的成本、数量、盈亏等信息。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "include_prices": {
+                        "type": "boolean",
+                        "description": "是否获取最新价格计算浮动盈亏，默认true",
+                        "default": True
+                    }
+                },
+                "required": []
             }
         }
     },
@@ -1338,6 +1534,183 @@ async def _execute_tool(tool_name: str, tool_args: dict, user_id: int, db=None,
             traceback.print_exc()
             return json.dumps({"status": "error", "message": f"财报抓取失败: {str(e)}"}, ensure_ascii=False)
 
+    elif tool_name == "run_backtest":
+        def _conditions_to_code(buy_conds, sell_conds, buy_logic="all", sell_logic="all"):
+            """将条件 JSON 翻译为可读的策略伪代码"""
+            OP_MAP = {
+                ">": ">", "<": "<", ">=": ">=", "<=": "<=",
+                "cross_above": "上穿 ↑", "cross_below": "下穿 ↓",
+            }
+            EXPR_MAP = {
+                "price": "收盘价", "volume": "成交量",
+            }
+            import re as _r
+            def _fmt(expr):
+                expr = expr.strip()
+                if expr in EXPR_MAP:
+                    return EXPR_MAP[expr]
+                m = _r.match(r'^(\w+)\(([^)]*)\)$', expr)
+                if m:
+                    n, a = m.group(1).lower(), m.group(2)
+                    names = {"sma": "SMA均线", "ema": "EMA均线", "rsi": "RSI",
+                             "macd": "MACD(DIF)", "macd_signal": "MACD信号线(DEA)",
+                             "boll_upper": "布林带上轨", "boll_lower": "布林带下轨",
+                             "boll_mid": "布林带中轨", "volume_ma": "均量"}
+                    label = names.get(n, n.upper())
+                    return f"{label}({a})" if a else label
+                try:
+                    float(expr)
+                    return expr
+                except ValueError:
+                    return expr
+
+            def _fmt_cond(c):
+                return f"{_fmt(c['left'])} {OP_MAP.get(c['op'], c['op'])} {_fmt(c['right'])}"
+
+            logic_cn = {"all": "且(AND)", "any": "或(OR)"}
+            lines = ["# 策略逻辑"]
+            joiner_buy = " 且 " if buy_logic == "all" else " 或 "
+            joiner_sell = " 且 " if sell_logic == "all" else " 或 "
+            buy_str = joiner_buy.join([_fmt_cond(c) for c in buy_conds])
+            sell_str = joiner_sell.join([_fmt_cond(c) for c in sell_conds])
+            lines.append(f"买入条件: {buy_str}")
+            lines.append(f"卖出条件: {sell_str}")
+            return "\n".join(lines)
+
+        try:
+            from backtest.engine import run_backtest as _run_backtest
+            from backtest.strategies import FlexibleStrategy
+            ts_code = tool_args.get("ts_code", "")
+            stock_name = tool_args.get("stock_name", "")
+            strategy_name = tool_args.get("strategy_name", "自定义策略")
+            buy_conditions = tool_args.get("buy_conditions", [])
+            sell_conditions = tool_args.get("sell_conditions", [])
+            buy_logic = tool_args.get("buy_logic", "all")
+            sell_logic = tool_args.get("sell_logic", "all")
+            start_date = tool_args.get("start_date", "")
+            end_date = tool_args.get("end_date", "")
+            initial_cash = tool_args.get("initial_cash", 100000)
+
+            # 默认近3年
+            if not start_date:
+                from datetime import timedelta
+                start_date = (datetime.now() - timedelta(days=365*3)).strftime("%Y-%m-%d")
+
+            if not ts_code:
+                return json.dumps({"status": "error", "message": "缺少股票代码 ts_code"}, ensure_ascii=False)
+            if not buy_conditions or not sell_conditions:
+                return json.dumps({"status": "error", "message": "缺少买入或卖出条件"}, ensure_ascii=False)
+
+            # 构建条件描述用于日志
+            cond_desc = f"买入: {json.dumps(buy_conditions, ensure_ascii=False)}, 卖出: {json.dumps(sell_conditions, ensure_ascii=False)}"
+            print(f"[Backtest] {stock_name}({ts_code}) 策略: {strategy_name}, {cond_desc}")
+
+            if progress_queue:
+                await progress_queue.put(f"正在回测 {stock_name}({ts_code})「{strategy_name}」...")
+
+            strategy_params = {
+                "buy_conditions": buy_conditions,
+                "sell_conditions": sell_conditions,
+                "buy_logic": buy_logic,
+                "sell_logic": sell_logic,
+            }
+
+            # 在线程池执行（CPU阻塞操作）
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                lambda: _run_backtest(
+                    ts_code=ts_code,
+                    strategy_cls=FlexibleStrategy,
+                    params=strategy_params,
+                    start_date=start_date,
+                    end_date=end_date,
+                    initial_cash=initial_cash,
+                )
+            )
+
+            # 生成可读策略代码
+            strategy_code = _conditions_to_code(buy_conditions, sell_conditions, buy_logic, sell_logic)
+
+            # 精简返回给模型（equity_curve太长，只给统计摘要 + 前5笔交易）
+            summary = result.get("summary", {})
+            trades = result.get("trades", [])
+            return json.dumps({
+                "status": "ok",
+                "stock": f"{stock_name}({ts_code})",
+                "strategy_name": strategy_name,
+                "strategy_code": strategy_code,
+                "period": f"{start_date} ~ {end_date or '至今'}",
+                "summary": summary,
+                "sample_trades": trades[:5],
+                "total_trades": len(trades),
+            }, ensure_ascii=False)
+
+        except Exception as e:
+            traceback.print_exc()
+            return json.dumps({"status": "error", "message": f"回测执行失败: {str(e)}"}, ensure_ascii=False)
+
+    elif tool_name == "portfolio_trade":
+        try:
+            from portfolio.service import add_transaction
+            from core.database import SessionLocal
+            trade_db = db if db else SessionLocal()
+            try:
+                result = add_transaction(
+                    db=trade_db,
+                    user_id=user_id,
+                    ts_code=tool_args.get("ts_code", ""),
+                    stock_name=tool_args.get("stock_name", ""),
+                    direction=tool_args.get("direction", "buy"),
+                    price=float(tool_args.get("price", 0)),
+                    quantity=int(tool_args.get("quantity", 0)),
+                    trade_date=tool_args.get("trade_date", ""),
+                    notes=tool_args.get("notes", ""),
+                )
+                return json.dumps(result, ensure_ascii=False)
+            finally:
+                if not db:
+                    trade_db.close()
+        except Exception as e:
+            traceback.print_exc()
+            return json.dumps({"status": "error", "message": f"交易记录失败: {str(e)}"}, ensure_ascii=False)
+
+    elif tool_name == "portfolio_query":
+        try:
+            from portfolio.service import get_portfolio_summary
+            from core.database import SessionLocal
+            query_db = db if db else SessionLocal()
+            try:
+                # 获取实时价格
+                current_prices = {}
+                include_prices = tool_args.get("include_prices", True)
+                if include_prices:
+                    try:
+                        from portfolio.service import calc_positions
+                        from backtest.data_store import fetch_daily
+                        positions = calc_positions(query_db, user_id)
+                        codes = [c for c, p in positions.items() if p["quantity"] > 0]
+                        for code in codes:
+                            try:
+                                df = await asyncio.get_event_loop().run_in_executor(
+                                    None, lambda c=code: fetch_daily(c, start_date="2025-01-01")
+                                )
+                                if len(df) > 0:
+                                    current_prices[code] = float(df["close"].iloc[-1])
+                            except Exception:
+                                pass
+                    except Exception as price_err:
+                        print(f"[Portfolio] 获取价格失败: {price_err}")
+
+                summary = get_portfolio_summary(query_db, user_id, current_prices=current_prices or None)
+                return json.dumps(summary, ensure_ascii=False)
+            finally:
+                if not db:
+                    query_db.close()
+        except Exception as e:
+            traceback.print_exc()
+            return json.dumps({"status": "error", "message": f"持仓查询失败: {str(e)}"}, ensure_ascii=False)
+
     else:
         return json.dumps({"error": f"未知工具: {tool_name}"}, ensure_ascii=False)
 
@@ -1406,16 +1779,31 @@ async def rag_chat_stream(
 
     try:
         for _round in range(max_rounds):
-            # 流式请求
-            stream = await _kimi_async_client.chat.completions.create(
-                model=LLM_MODEL,
-                messages=messages,
-                tools=AGENT_TOOLS,
-                temperature=KIMI_TEMPERATURE,
-                max_tokens=KIMI_MAX_TOKENS,
-                stream=True,
-                extra_body={"thinking": {"type": "disabled"}},
-            )
+            # 流式请求（带重试机制）
+            retry_count = 0
+            max_retries = 3
+            retry_delay = 2  # 秒
+            
+            while retry_count <= max_retries:
+                try:
+                    stream = await _kimi_async_client.chat.completions.create(
+                        model=LLM_MODEL,
+                        messages=messages,
+                        tools=AGENT_TOOLS,
+                        temperature=KIMI_TEMPERATURE,
+                        max_tokens=KIMI_MAX_TOKENS,
+                        stream=True,
+                        extra_body={"thinking": {"type": "disabled"}},
+                    )
+                    break  # 成功则跳出重试循环
+                except Exception as e:
+                    if "engine_overloaded" in str(e).lower() and retry_count < max_retries:
+                        retry_count += 1
+                        print(f"[RAG] 模型过载，{retry_delay}秒后重试 ({retry_count}/{max_retries})")
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2  # 指数退避
+                    else:
+                        raise e  # 非过载错误或重试次数用完，直接抛出
 
             # 收集 tool_calls 碎片
             collected_tool_calls = {}
@@ -1547,6 +1935,11 @@ async def rag_chat_stream(
                             yield f"data: {_phase}\n\n"
                         elif fn_name == "fetch_financial_report":
                             _phase = json.dumps({'type': 'phase', 'content': '正在检查' + _cn + str(_yr) + '年财报是否已入库...'}, ensure_ascii=False)
+                            yield f"data: {_phase}\n\n"
+                        elif fn_name == "run_backtest":
+                            _sn = fn_args.get('stock_name', '') or fn_args.get('ts_code', '')
+                            _st = fn_args.get('strategy_name', '自定义策略')
+                            _phase = json.dumps({'type': 'phase', 'content': f'正在回测 {_sn}「{_st}」...'}, ensure_ascii=False)
                             yield f"data: {_phase}\n\n"
                         else:
                             yield f"data: {json.dumps({'type': 'phase', 'content': '正在处理...'}, ensure_ascii=False)}\n\n"

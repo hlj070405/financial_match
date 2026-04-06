@@ -37,7 +37,7 @@ const featureMap = { 'rag_search': SearchPage, 'rag_rank': RankPage, 'rag_filter
 const currentFeature = ref(props.activeFeature || 'rag_search')
 const transitionName = ref('page-slide-right')
 let prevIndex = 0
-const showTabs = computed(() => features.length > 1)
+const showTabs = computed(() => false)
 const currentComponent = computed(() => featureMap[currentFeature.value] || SearchPage)
 const switchTo = (id) => {
   const newIdx = features.findIndex(f => f.id === id)

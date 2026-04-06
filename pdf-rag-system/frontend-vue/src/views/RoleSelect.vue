@@ -23,21 +23,6 @@
         <p class="text-sm text-white/70 drop-shadow-sm">预设将为您配置最适合的功能模块，您可以随时在设置中调整</p>
       </div>
 
-      <!-- Group Tabs -->
-      <div class="flex justify-center mb-6 gap-3">
-        <button
-          v-for="group in groups"
-          :key="group.id"
-          @click="activeGroup = group.id"
-          class="px-5 py-2 rounded-full text-sm font-medium transition-all duration-300 border"
-          :class="activeGroup === group.id
-            ? 'bg-white/90 text-gray-900 border-white/60 shadow-lg'
-            : 'bg-white/10 text-white/80 border-white/20 hover:bg-white/20'"
-        >
-          {{ group.label }}
-        </button>
-      </div>
-
       <!-- Role Cards -->
       <div class="grid gap-4" :class="currentRoles.length <= 2 ? 'grid-cols-1 sm:grid-cols-2 max-w-2xl mx-auto' : 'grid-cols-1 sm:grid-cols-3'">
         <button
@@ -123,30 +108,21 @@ import { useRouter } from 'vue-router'
 import VantaBackground from '../components/VantaBackground.vue'
 import GlassButton from '../components/GlassButton.vue'
 import { 
-  User, Users, Briefcase, Building2, Building,
+  User, Users, Briefcase,
 } from 'lucide-vue-next'
 import { ROLES, ALL_MODULES, saveUserRole, saveEnabledModules, saveEnabledFeatures, getDefaultFeaturesForRole } from '../config/modules.js'
 
 const router = useRouter()
-const activeGroup = ref('personal')
 const selectedRole = ref(null)
-
-const groups = [
-  { id: 'personal', label: '个人用户' },
-  { id: 'enterprise', label: '企业用户' }
-]
 
 const roleIcons = {
   personal_general: User,
   personal_wealthy: Users,
-  personal_professional: Briefcase,
-  enterprise_small: Building2,
-  enterprise_large: Building
+  personal_professional: Briefcase
 }
 
 const currentRoles = computed(() => {
   return Object.values(ROLES)
-    .filter(r => r.group === activeGroup.value)
     .map(r => ({
       ...r,
       icon: roleIcons[r.id],

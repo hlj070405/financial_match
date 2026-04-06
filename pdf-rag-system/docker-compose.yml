@@ -1,21 +1,100 @@
 version: '3.8'
 
 services:
+  # ========== 基础设施 ==========
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-changeme123}
+      MYSQL_DATABASE: phantom_flow
+      MYSQL_CHARSET: utf8mb4
+      MYSQL_COLLATION: utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - ANONYMIZED_TELEMETRY=False
+    restart: unless-stopped
+
+  # ========== 后端 ==========
   backend:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
-      - DIFY_API_URL=http://host.docker.internal/v1
-      - DIFY_API_KEY=${DIFY_API_KEY}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      # 数据库（容器间通过服务名通信）
+      DATABASE_URL: mysql+pymysql://root:${MYSQL_ROOT_PASSWORD:-changeme123}@mysql:3306/phantom_flow
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # ChromaDB（容器内部端口是8000）
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: 8000
+      # API Keys
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      KIMI_API_KEY: ${KIMI_API_KEY:-}
+      KIMI_BASE_URL: ${KIMI_BASE_URL:-https://api.moonshot.cn/v1}
+      KIMI_MODEL: ${KIMI_MODEL:-kimi-k2.5}
+      # Tushare
+      TUSHARE_TOKEN: ${TUSHARE_TOKEN:-}
+      TUSHARE_HTTP_URL: ${TUSHARE_HTTP_URL:-}
+      # Auth
+      SECRET_KEY: ${SECRET_KEY:-change-this-to-a-random-string}
+    volumes:
+      - report_data:/app/financial_reports
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
     restart: unless-stopped
 
+  # ========== 前端 ==========
   frontend:
-    image: nginx:alpine
+    build:
+      context: ./frontend-vue
+      dockerfile: Dockerfile
     ports:
-      - "3000:80"
-    volumes:
-      - ./frontend:/usr/share/nginx/html:ro
+      - "80:80"
+    depends_on:
+      - backend
     restart: unless-stopped
+
+volumes:
+  mysql_data:
+  redis_data:
+  chroma_data:
+  report_data:

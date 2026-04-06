@@ -80,13 +80,33 @@
           </div>
 
           <div class="glass-panel p-6">
-            <h2 class="text-xl font-semibold text-gray-800 mb-5 text-center">金融分析系统登录</h2>
+            <h2 class="text-xl font-semibold text-gray-800 mb-5 text-center">
+              {{ isLogin ? '金融分析系统登录' : '金融分析系统注册' }}
+            </h2>
             
             <div v-if="errorMessage" class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">
               {{ errorMessage }}
             </div>
             
-            <form @submit.prevent="handleLogin" class="space-y-4">
+            <form @submit.prevent="isLogin ? handleLogin() : handleRegister()" class="space-y-4">
+              <!-- 注册时显示的额外字段 -->
+              <div v-if="!isLogin">
+                <label class="block text-sm font-medium text-gray-700 mb-1">
+                  <span class="flex items-center">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                    </svg>
+                    全名
+                  </span>
+                </label>
+                <input 
+                  v-model="fullName"
+                  type="text" 
+                  class="glass-input text-sm"
+                  placeholder="请输入真实姓名"
+                />
+              </div>
+
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">
                   <span class="flex items-center">
@@ -101,6 +121,25 @@
                   type="text" 
                   class="glass-input text-sm"
                   placeholder="请输入用户名"
+                  required
+                />
+              </div>
+
+              <!-- 注册时显示邮箱字段 -->
+              <div v-if="!isLogin">
+                <label class="block text-sm font-medium text-gray-700 mb-1">
+                  <span class="flex items-center">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                    </svg>
+                    邮箱
+                  </span>
+                </label>
+                <input 
+                  v-model="email"
+                  type="email" 
+                  class="glass-input text-sm"
+                  placeholder="请输入邮箱地址"
                   required
                 />
               </div>
@@ -123,7 +162,26 @@
                 />
               </div>
 
-              <div class="flex items-center justify-between text-sm">
+              <!-- 注册时显示确认密码字段 -->
+              <div v-if="!isLogin">
+                <label class="block text-sm font-medium text-gray-700 mb-1">
+                  <span class="flex items-center">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                    </svg>
+                    确认密码
+                  </span>
+                </label>
+                <input 
+                  v-model="confirmPassword"
+                  type="password" 
+                  class="glass-input text-sm"
+                  placeholder="请再次输入密码"
+                  required
+                />
+              </div>
+
+              <div class="flex items-center justify-between text-sm" v-if="isLogin">
                 <label class="flex items-center cursor-pointer">
                   <input 
                     v-model="rememberMe"
@@ -137,7 +195,7 @@
 
               <GlassButton 
                 class="w-full"
-                @click="handleLogin"
+                @click="isLogin ? handleLogin() : handleRegister()"
                 :disabled="isLoading"
               >
                 <span class="flex items-center justify-center space-x-2 text-sm">
@@ -145,10 +203,23 @@
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  <span class="font-medium">{{ isLoading ? '验证中...' : '登录' }}</span>
+                  <span class="font-medium">{{ isLoading ? (isLogin ? '验证中...' : '注册中...') : (isLogin ? '登录' : '注册') }}</span>
                 </span>
               </GlassButton>
             </form>
+
+            <!-- 切换登录/注册 -->
+            <div class="text-center mt-4 text-sm">
+              <span class="text-gray-600">
+                {{ isLogin ? '还没有账号？' : '已有账号？' }}
+              </span>
+              <button 
+                @click="toggleMode" 
+                class="ml-1 text-blue-600 hover:text-blue-800 font-medium transition"
+              >
+                {{ isLogin ? '立即注册' : '立即登录' }}
+              </button>
+            </div>
 
             <div class="relative my-5">
               <div class="absolute inset-0 flex items-center">
@@ -239,11 +310,26 @@ import VantaBackground from '../components/VantaBackground.vue'
 import GlassButton from '../components/GlassButton.vue'
 
 const router = useRouter()
+const isLogin = ref(true)
 const username = ref('')
 const password = ref('')
+const confirmPassword = ref('')
+const fullName = ref('')
+const email = ref('')
 const rememberMe = ref(false)
 const isLoading = ref(false)
 const errorMessage = ref('')
+
+const toggleMode = () => {
+  isLogin.value = !isLogin.value
+  errorMessage.value = ''
+  // 清空表单
+  username.value = ''
+  password.value = ''
+  confirmPassword.value = ''
+  fullName.value = ''
+  email.value = ''
+}
 
 const handleLogin = async () => {
   if (!username.value || !password.value) {
@@ -285,6 +371,66 @@ const handleLogin = async () => {
   } catch (error) {
     errorMessage.value = error.message || '登录失败，请检查网络连接'
     console.error('登录错误:', error)
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const handleRegister = async () => {
+  // 表单验证
+  if (!username.value || !password.value || !email.value || !fullName.value) {
+    errorMessage.value = '请填写所有必填字段'
+    return
+  }
+
+  if (password.value !== confirmPassword.value) {
+    errorMessage.value = '两次输入的密码不一致'
+    return
+  }
+
+  if (password.value.length < 6) {
+    errorMessage.value = '密码长度至少为6位'
+    return
+  }
+
+  isLoading.value = true
+  errorMessage.value = ''
+  
+  try {
+    const response = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        username: username.value,
+        password: password.value,
+        email: email.value,
+        full_name: fullName.value,
+      }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.detail || '注册失败')
+    }
+
+    // 注册成功后自动登录
+    localStorage.setItem('access_token', data.access_token)
+    localStorage.setItem('user', JSON.stringify(data.user))
+    
+    // 切换到登录模式
+    isLogin.value = true
+    errorMessage.value = ''
+    
+    // 跳转到角色选择或首页
+    const userRole = localStorage.getItem('user_role')
+    router.push(userRole ? '/dashboard' : '/role-select')
+    
+  } catch (error) {
+    errorMessage.value = error.message || '注册失败，请检查网络连接'
+    console.error('注册错误:', error)
   } finally {
     isLoading.value = false
   }

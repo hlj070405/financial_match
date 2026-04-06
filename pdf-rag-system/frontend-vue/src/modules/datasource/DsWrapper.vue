@@ -37,7 +37,7 @@ const featureMap = { 'ds_upload': UploadPage, 'ds_batch': BatchPage, 'ds_multi':
 const currentFeature = ref(props.activeFeature || 'ds_upload')
 const transitionName = ref('page-slide-right')
 let prevIndex = 0
-const showTabs = computed(() => features.length > 1)
+const showTabs = computed(() => false)
 const currentComponent = computed(() => featureMap[currentFeature.value] || UploadPage)
 const switchTo = (id) => {
   const newIdx = features.findIndex(f => f.id === id)

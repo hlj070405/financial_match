@@ -64,7 +64,7 @@ const currentFeature = ref(props.activeFeature || 'chat_main')
 const transitionName = ref('page-slide-right')
 let prevIndex = 0
 
-const showTabs = computed(() => features.length > 1)
+const showTabs = computed(() => false)
 
 const currentComponent = computed(() => {
   return featureComponentMap[currentFeature.value] || ClarifyPage

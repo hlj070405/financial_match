@@ -48,3 +48,22 @@ pdf-rag-system/backend/financial_reports/uploads/
 
 # Logs
 *.log
+
+# Temporary / generated files
+frontend-vue.tar
+test_portfolio.db
+tmp_daemon.json
+tmp_server.env
+setup_docker_mirror.sh
+
+# Financial report generated markdown
+pdf-rag-system/backend/financial_reports/*.md
+
+# Backtest data cache
+pdf-rag-system/backend/backtest/data_cache/
+
+# ChromaDB local store
+pdf-rag-system/backend/chroma_db/
+
+# Debug logs
+pdf-rag-system/backend/debug-*.log

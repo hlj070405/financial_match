@@ -125,6 +125,36 @@ class HotspotNews(Base):
     created_at = Column(DateTime, default=datetime.utcnow, comment="创建时间")
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")
 
+# 虚拟持仓 - 投资组合
+class Portfolio(Base):
+    __tablename__ = "portfolios"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, nullable=False, comment="用户ID")
+    name = Column(String(100), default="默认组合", comment="组合名称")
+    initial_cash = Column(Integer, default=100000, comment="初始资金(分)")
+    commission_rate = Column(Integer, default=25, comment="佣金费率(万分之)")
+    created_at = Column(DateTime, default=datetime.utcnow, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")
+
+# 虚拟持仓 - 交易流水
+class PortfolioTransaction(Base):
+    __tablename__ = "portfolio_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    portfolio_id = Column(Integer, index=True, nullable=False, comment="组合ID")
+    user_id = Column(Integer, index=True, nullable=False, comment="用户ID")
+    ts_code = Column(String(20), nullable=False, comment="股票代码(如000001.SZ)")
+    stock_name = Column(String(50), nullable=False, comment="股票名称")
+    direction = Column(String(10), nullable=False, comment="buy/sell")
+    price = Column(Integer, nullable=False, comment="成交价(分)")
+    quantity = Column(Integer, nullable=False, comment="数量(股)")
+    commission = Column(Integer, default=0, comment="佣金(分)")
+    stamp_tax = Column(Integer, default=0, comment="印花税(分)")
+    trade_date = Column(String(20), nullable=False, comment="成交日期 YYYY-MM-DD")
+    notes = Column(String(500), nullable=True, comment="备注")
+    created_at = Column(DateTime, default=datetime.utcnow, comment="创建时间")
+
 def init_db():
     """初始化数据库表"""
     Base.metadata.create_all(bind=engine)

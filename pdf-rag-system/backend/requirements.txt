@@ -25,3 +25,6 @@ pymupdf4llm>=0.0.17
 pdfplumber>=0.11.0
 Pillow>=10.0.0
 pytesseract>=0.3.10
+backtrader>=1.9.78
+baostock>=0.8.8
+pyarrow>=15.0.0
