@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>模块设计总览</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Microsoft YaHei','SimHei',sans-serif;background:#fff;color:#1a1a2e;display:flex;justify-content:center;padding:24px}
+.wrap{width:900px}
+
+.title{text-align:center;margin-bottom:10px}
+.title h2{font-size:15px;font-weight:700;letter-spacing:3px;color:#1a1a2e}
+.title .sub{font-size:10px;color:#888;margin-top:2px;letter-spacing:1px}
+
+/* ---- Module Card ---- */
+.mod{
+  margin-bottom:12px;border:1.5px solid;border-radius:8px;
+  padding:12px 14px;position:relative;overflow:hidden;background:#fff
+}
+.mod::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.mod h3{font-size:11px;font-weight:700;margin:2px 0 4px;display:flex;align-items:center;gap:6px}
+.mod h3 .num{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:20px;height:20px;border-radius:50%;font-size:9px;font-weight:700;color:#fff;flex-shrink:0
+}
+.mod h3 .tag{
+  display:inline-block;padding:1px 6px;border-radius:3px;font-size:7.5px;font-weight:600
+}
+.mod .idea{font-size:9px;color:#666;margin-bottom:6px;line-height:1.5;padding-left:26px}
+.mod .idea b{color:#1a1a2e}
+
+/* Chain */
+.chain{display:flex;flex-wrap:wrap;gap:0;align-items:center;padding-left:26px}
+.chain-node{
+  padding:4px 8px;border-radius:4px;font-size:8px;font-weight:600;
+  line-height:1.4;text-align:center;white-space:nowrap
+}
+.chain-node .sub{font-size:6.5px;font-weight:400;color:#666;display:block;margin-top:1px;white-space:normal}
+.chain-arrow{font-size:11px;color:#bbb;padding:0 2px;flex-shrink:0}
+
+/* Decision */
+.decisions{
+  margin-top:6px;padding:5px 10px 5px 26px;
+  font-size:8px;color:#555;line-height:1.6
+}
+.decisions b{color:#1a1a2e}
+.decisions code{
+  background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;
+  padding:0 3px;font-size:7px;font-family:'Consolas','Monaco',monospace;color:#c0392b
+}
+
+/* ---- Color Themes ---- */
+.mod-1{border-color:#2980b9}
+.mod-1::before{background:linear-gradient(90deg,#2980b9,#85c1e9)}
+.mod-1 h3{color:#1a5276}
+.mod-1 h3 .num{background:#2980b9}
+.mod-1 h3 .tag{background:#eaf2fd;color:#1a5276;border:1px solid #aed6f1}
+.mod-1 .chain-node{background:#eaf2fd;border:1px solid #aed6f1;color:#1a5276}
+
+.mod-2{border-color:#e67e22}
+.mod-2::before{background:linear-gradient(90deg,#e67e22,#f0b27a)}
+.mod-2 h3{color:#7e3f00}
+.mod-2 h3 .num{background:#e67e22}
+.mod-2 h3 .tag{background:#fef5e7;color:#7e3f00;border:1px solid #f5cba7}
+.mod-2 .chain-node{background:#fef5e7;border:1px solid #f5cba7;color:#7e3f00}
+
+.mod-3{border-color:#27ae60}
+.mod-3::before{background:linear-gradient(90deg,#27ae60,#82e0aa)}
+.mod-3 h3{color:#1e8449}
+.mod-3 h3 .num{background:#27ae60}
+.mod-3 h3 .tag{background:#eafaf1;color:#1a7a42;border:1px solid #a9dfbf}
+.mod-3 .chain-node{background:#eafaf1;border:1px solid #a9dfbf;color:#1e8449}
+
+.mod-4{border-color:#8e44ad}
+.mod-4::before{background:linear-gradient(90deg,#8e44ad,#c39bd3)}
+.mod-4 h3{color:#6c3483}
+.mod-4 h3 .num{background:#8e44ad}
+.mod-4 h3 .tag{background:#f4ecf7;color:#6c3483;border:1px solid #d2b4de}
+.mod-4 .chain-node{background:#f4ecf7;border:1px solid #d2b4de;color:#6c3483}
+
+.mod-5{border-color:#c0392b}
+.mod-5::before{background:linear-gradient(90deg,#c0392b,#f1948a)}
+.mod-5 h3{color:#922b21}
+.mod-5 h3 .num{background:#c0392b}
+.mod-5 h3 .tag{background:#fdedec;color:#922b21;border:1px solid #f5b7b1}
+.mod-5 .chain-node{background:#fdedec;border:1px solid #f5b7b1;color:#922b21}
+
+.mod-6{border-color:#2c3e50}
+.mod-6::before{background:linear-gradient(90deg,#2c3e50,#85929e)}
+.mod-6 h3{color:#2c3e50}
+.mod-6 h3 .num{background:#2c3e50}
+.mod-6 h3 .tag{background:#ebedef;color:#2c3e50;border:1px solid #aeb6bf}
+.mod-6 .chain-node{background:#ebedef;border:1px solid #aeb6bf;color:#2c3e50}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="title">
+  <h2>模块设计总览</h2>
+  <div class="sub">Module Design Overview · 6 Functional Modules</div>
+</div>
+
+<!-- ==================== Module 1 ==================== -->
+<div class="mod mod-1">
+  <h3><span class="num">1</span> RAG 财报问答 <span class="tag">核心模块</span></h3>
+  <div class="idea">用户上传 PDF 财报 → 系统自动解析入库 → 对话式问答，回答基于<b>真实文档内容</b>，带来源引用。</div>
+  <div class="chain">
+    <div class="chain-node">PDF 解析<span class="sub">pymupdf4llm → Markdown<br>PyMuPDF 兜底</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">chunker.py<span class="sub">章节标题感知 / 表格保留<br>/ 固定字符兜底</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">Embedding<span class="sub">bge-large-zh-v1.5<br>硅基流动 API</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">ChromaDB<span class="sub">本地持久化<br>user_{id}_docs</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">query_router<span class="sub">意图解析 → 元数据过滤<br>→ BM25+向量 RRF 融合</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">K2.5 流式生成<span class="sub">带来源页码引用</span></div>
+  </div>
+  <div class="decisions">
+    <b>关键决策</b>：混合检索解决「实体混淆」问题（纯向量易混不同公司财报）；每用户独立 collection 避免数据泄露
+  </div>
+</div>
+
+<!-- ==================== Module 2 ==================== -->
+<div class="mod mod-2">
+  <h3><span class="num">2</span> Agent 智能分析 <span class="tag">联网搜索 + 行情融合</span></h3>
+  <div class="idea">用户输入股票代码 → Agent 自动<b>联网搜索</b>最新信息 + 结合行情数据，生成综合分析报告。</div>
+  <div class="chain">
+    <div class="chain-node">用户输入<span class="sub">股票代码 / 名称</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">K2.5 + $web_search<span class="sub">模型自动判断<br>何时联网搜索</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">Tushare 行情<span class="sub">日K / 资金流 / 财务</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">Redis 互斥锁<span class="sub">SET NX EX<br>防并发分析</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">后台线程执行<span class="sub">前端轮询状态<br>idle → running → done</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">分析报告<span class="sub">缓存 TTL=10min</span></div>
+  </div>
+  <div class="decisions">
+    <b>关键决策</b>：Redis SET NX EX 分布式互斥锁防同一股票并发分析（锁 TTL=5min 防死锁）；后台线程异步执行 + 前端轮询，避免阻塞 HTTP 连接
+  </div>
+</div>
+
+<!-- ==================== Module 3 ==================== -->
+<div class="mod mod-3">
+  <h3><span class="num">3</span> 实时行情 <span class="tag">Tushare Pro + Redis 缓存</span></h3>
+  <div class="idea">Tushare Pro API 提供 A 股<b>行情、K线、财务指标、资金流向</b>等数据，Redis 分层缓存降低 API 调用。</div>
+  <div class="chain">
+    <div class="chain-node">tushare_service.py<span class="sub">封装所有数据接口<br>5000积分可用</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">Redis 分层缓存<span class="sub">static: 永不失效<br>daily: 每日刷新<br>financial: 每季度</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">_sanitize_records<span class="sub">np.int64 → int<br>NaN → None<br>pd.Timestamp → str</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">JSON API 响应<span class="sub">前端 ECharts 渲染</span></div>
+  </div>
+  <div class="decisions">
+    <b>关键决策</b>：Stale-While-Revalidate 模式（数据永久存储，仅过时才刷新，旧数据继续服务）；<code>_sanitize_records</code> 统一处理 6 种 numpy 类型的 JSON 序列化问题
+  </div>
+</div>
+
+<!-- ==================== Module 4 ==================== -->
+<div class="mod mod-4">
+  <h3><span class="num">4</span> 量化回测 <span class="tag">自然语言 → FlexibleStrategy</span></h3>
+  <div class="idea">用户用自然语言描述策略（如"<b>5日均线上穿20日均线买入</b>"）→ Agent 翻译为条件 JSON → Backtrader 执行回测。</div>
+  <div class="chain">
+    <div class="chain-node">BaoStock 数据<span class="sub">历史K线<br>Parquet 本地缓存</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">K2.5 翻译<span class="sub">自然语言 → 条件 JSON<br>buy/sell_conditions</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">FlexibleStrategy<span class="sub">SMA/EMA/RSI/MACD<br>布林带 · 11种指标</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">Backtrader 引擎<span class="sub">A股费用模拟<br>佣金万2.5 + 印花税</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">回测报告<span class="sub">收益 / 夏普 / 回撤<br>交易明细 + 资金曲线</span></div>
+  </div>
+  <div class="decisions">
+    <b>策略架构</b>：注册表模式（3 个预置策略 + FlexibleStrategy 自定义条件式策略），支持 <code>cross_above</code> / <code>cross_below</code> 交叉信号
+  </div>
+</div>
+
+<!-- ==================== Module 5 ==================== -->
+<div class="mod mod-5">
+  <h3><span class="num">5</span> 虚拟持仓 <span class="tag">模拟交易 + 费用计算</span></h3>
+  <div class="idea">模拟真实交易体验，用户可<b>买入/卖出</b>，系统自动计算持仓成本和盈亏。</div>
+  <div class="chain">
+    <div class="chain-node">用户指令<span class="sub">"买入 XX 股"<br>Agent 解析</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">加权平均成本<span class="sub">自动计算持仓均价</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">A股费用<span class="sub">佣金万2.5<br>印花税卖出0.05%</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">SQLAlchemy ORM<span class="sub">Portfolio 表<br>PortfolioTransaction 表</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">实时估值<span class="sub">联动 BaoStock 最新行情<br>持仓盈亏统计</span></div>
+  </div>
+  <div class="decisions">
+    <b>关键决策</b>：加权平均成本法（而非 FIFO），更符合 A 股散户实际操作习惯；Agent 工具集成（用户对话中说"买入"即可触发交易记录）
+  </div>
+</div>
+
+<!-- ==================== Module 6 ==================== -->
+<div class="mod mod-6">
+  <h3><span class="num">6</span> 对话管理 <span class="tag">统一入口 · 流式输出</span></h3>
+  <div class="idea">所有功能统一入口为对话界面，支持<b>历史记录、断线重连、流式输出</b>。</div>
+  <div class="chain">
+    <div class="chain-node">SSE 流式推送<span class="sub">Server-Sent Events<br>7种事件类型</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">StreamHub<span class="sub">Producer-Consumer<br>asyncio.Condition</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">断线续传<span class="sub">resume_chat_stream<br>last_event_id 恢复</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">对话标题<span class="sub">自动生成<br>首条消息摘要</span></div>
+    <span class="chain-arrow">→</span>
+    <div class="chain-node">历史记录 CRUD<span class="sub">自动保存<br>会话列表管理</span></div>
+  </div>
+  <div class="decisions">
+    <b>关键决策</b>：Producer-Consumer 分离架构（后台生成事件，前端独立消费）；<code>last_event_id</code> 断线续传（缓存 5000 条事件，移动端网络抖动无感恢复）
+  </div>
+</div>
+
+</div>
+</body>
+</html>

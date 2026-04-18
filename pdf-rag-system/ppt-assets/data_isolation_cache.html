@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>多用户数据隔离与实时行情缓存</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Microsoft YaHei','SimHei',sans-serif;background:#fff;color:#1a1a2e;display:flex;justify-content:center;padding:24px}
+.wrap{width:900px}
+
+/* ---- Title ---- */
+.title{text-align:center;margin-bottom:6px}
+.title h2{font-size:15px;font-weight:700;letter-spacing:3px;color:#1a1a2e}
+.title .sub{font-size:10px;color:#888;margin-top:2px;letter-spacing:1px}
+
+/* ---- Narrative ---- */
+.narr{font-size:9.5px;color:#444;line-height:1.7;margin:8px 0;padding:0 2px;text-indent:2em}
+.narr b{color:#1a1a2e}
+.narr code{background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;padding:0 3px;font-size:7.5px;font-family:'Consolas','Monaco',monospace;color:#c0392b}
+.narr-intro{
+  font-size:9.5px;color:#444;line-height:1.7;margin:6px 0 12px;
+  padding:6px 12px;background:#f7f9fc;border-left:3px solid #2980b9;border-radius:0 4px 4px 0
+}
+.narr-intro b{color:#1a1a2e}
+
+/* ---- Problem Banner ---- */
+.problem{
+  background:linear-gradient(135deg,#fff5f5,#fff0f0);
+  border:1px solid #e8c4c4;border-radius:6px;
+  padding:10px 14px;margin:10px 0 8px;display:flex;gap:10px;align-items:flex-start
+}
+.problem .icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.problem .content{flex:1}
+.problem .content h4{font-size:10.5px;color:#c0392b;margin-bottom:3px;font-weight:700}
+.problem .content p{font-size:9px;color:#666;line-height:1.6}
+.problem .content p b{color:#c0392b}
+
+/* ---- Section Card ---- */
+.section{
+  margin-bottom:12px;border:1.5px solid;border-radius:8px;
+  padding:12px 14px;position:relative;overflow:hidden;background:#fff
+}
+.section::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.section h3{font-size:11px;font-weight:700;margin:2px 0 10px;display:flex;align-items:center;gap:6px}
+.section h3 .tag{
+  display:inline-block;padding:1px 6px;border-radius:3px;font-size:7.5px;font-weight:600
+}
+
+.sec-iso{border-color:#2980b9}
+.sec-iso::before{background:linear-gradient(90deg,#2980b9,#85c1e9)}
+.sec-iso h3{color:#1a5276}
+.sec-iso h3 .tag{background:#eaf2fd;color:#1a5276;border:1px solid #aed6f1}
+
+.sec-cache{border-color:#27ae60}
+.sec-cache::before{background:linear-gradient(90deg,#27ae60,#82e0aa)}
+.sec-cache h3{color:#1e8449}
+.sec-cache h3 .tag{background:#eafaf1;color:#1a7a42;border:1px solid #a9dfbf}
+
+.sec-lock{border-color:#8e44ad}
+.sec-lock::before{background:linear-gradient(90deg,#8e44ad,#c39bd3)}
+.sec-lock h3{color:#6c3483}
+.sec-lock h3 .tag{background:#f4ecf7;color:#6c3483;border:1px solid #d2b4de}
+
+/* ---- Isolation Grid ---- */
+.iso-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.iso-card{
+  border:1px solid #d5dbdb;border-radius:6px;padding:9px 10px;
+  background:#fafbfc;position:relative
+}
+.iso-card .layer-icon{
+  position:absolute;top:8px;right:8px;font-size:14px
+}
+.iso-card h5{font-size:9.5px;font-weight:700;color:#2c3e50;margin-bottom:4px;padding-right:20px}
+.iso-card .items{font-size:8.5px;color:#444;line-height:1.7}
+.iso-card .items b{color:#1a1a2e}
+.iso-card .items code{
+  background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;
+  padding:0 3px;font-size:7.5px;font-family:'Consolas','Monaco',monospace;color:#c0392b
+}
+.iso-card .key-line{
+  margin-top:4px;padding:3px 6px;background:#eaf2fd;border:1px solid #aed6f1;
+  border-radius:3px;font-size:7.5px;color:#1a5276;font-family:'Consolas','Monaco',monospace;
+  text-align:center;font-weight:600
+}
+
+/* ---- Cache Table ---- */
+.cache-table{width:100%;border-collapse:collapse;font-size:8.5px}
+.cache-table th{
+  background:#1e8449;color:#fff;padding:5px 8px;
+  font-weight:600;text-align:center;font-size:8px
+}
+.cache-table td{padding:4px 8px;border:1px solid #ddd;text-align:center;line-height:1.5}
+.cache-table tr:nth-child(even){background:#f0faf4}
+.cache-table td code{
+  background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;
+  padding:0 3px;font-size:7px;font-family:'Consolas','Monaco',monospace;color:#c0392b
+}
+.cache-table .left{text-align:left}
+.cache-table .accent{color:#c0392b;font-weight:600}
+
+/* ---- Stale Strategy ---- */
+.stale-box{
+  margin-top:10px;padding:8px 10px;border:1px solid #e8e8e8;border-radius:6px;background:#fafbfc
+}
+.stale-box h5{font-size:9px;font-weight:700;color:#2c3e50;margin-bottom:6px;text-align:center}
+.stale-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.stale-item{
+  padding:5px 8px;border-radius:4px;text-align:center;font-size:8px;line-height:1.5
+}
+.stale-item .type{font-weight:700;margin-bottom:2px}
+.stale-static{background:#eaf2fd;border:1px solid #aed6f1;color:#1a5276}
+.stale-daily{background:#fef5e7;border:1px solid #f5cba7;color:#7e3f00}
+.stale-financial{background:#f4ecf7;border:1px solid #d2b4de;color:#6c3483}
+
+/* ---- Lock Flow ---- */
+.lock-flow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.lock-panel{padding:8px 10px;border:1px solid #e8e8e8;border-radius:6px;background:#fafbfc}
+.lock-panel h5{font-size:9px;font-weight:700;color:#2c3e50;margin-bottom:4px;text-align:center}
+.lock-panel .code{
+  font-family:'Consolas','Monaco',monospace;font-size:7.5px;
+  background:#2c3e50;color:#ecf0f1;padding:6px 8px;border-radius:4px;
+  line-height:1.5;white-space:pre
+}
+.lock-panel .code .k{color:#f39c12}
+.lock-panel .code .c{color:#7f8c8d;font-style:italic}
+.lock-panel .code .s{color:#2ecc71}
+.lock-panel .code .n{color:#e74c3c}
+.lock-panel .note{font-size:7.5px;color:#888;margin-top:4px;text-align:center}
+
+/* ---- Sanitize Box ---- */
+.sanitize-box{
+  margin-top:10px;padding:8px 10px;border:1px solid #e8e8e8;border-radius:6px;background:#fafbfc
+}
+.sanitize-box h5{font-size:9px;font-weight:700;color:#2c3e50;margin-bottom:4px}
+.sanitize-grid{display:grid;grid-template-columns:1fr 20px 1fr;gap:0;align-items:center}
+.sanitize-col{font-size:8px;color:#444;line-height:1.6}
+.sanitize-col code{
+  background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;
+  padding:0 3px;font-size:7px;font-family:'Consolas','Monaco',monospace;color:#c0392b
+}
+.sanitize-arrow{text-align:center;font-size:13px;color:#aaa}
+.sanitize-col .row{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px dotted #eee}
+.sanitize-col .row .from{color:#c0392b}
+.sanitize-col .row .to{color:#27ae60;font-weight:600}
+
+/* ---- Metrics Bar ---- */
+.metrics{display:flex;gap:6px;justify-content:center;margin:12px 0}
+.m{
+  border:1px solid #ddd;border-radius:6px;padding:6px 14px;
+  text-align:center;background:#fafbfc;flex:1;max-width:150px
+}
+.m .val{font-size:15px;font-weight:700;color:#2c3e50;line-height:1.2}
+.m .lbl{font-size:7.5px;color:#888;margin-top:1px}
+
+/* ---- Difficulty Notes ---- */
+.difficulty{
+  padding:10px 14px;border:1px solid #d5d8dc;border-radius:6px;background:#fdfdfe
+}
+.difficulty h4{font-size:10px;font-weight:700;margin-bottom:6px;color:#2c3e50}
+.diff-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.diff-item{padding:6px 8px;border-radius:4px;border:1px solid #e8e8e8;background:#fff}
+.diff-item .q{font-size:8.5px;color:#c0392b;font-weight:600;margin-bottom:3px}
+.diff-item .a{font-size:8px;color:#555;line-height:1.5}
+.diff-item .a b{color:#1a1a2e}
+.diff-item .a code{background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;padding:0 2px;font-size:7px;font-family:'Consolas','Monaco',monospace;color:#c0392b}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- Title -->
+<div class="title">
+  <h2>多用户数据隔离与实时行情缓存</h2>
+  <div class="sub">Multi-User Isolation & Real-Time Market Cache · ChromaDB + Redis + Agent Mutex</div>
+</div>
+
+<!-- Problem Statement -->
+<div class="problem">
+  <div class="icon">⚠</div>
+  <div class="content">
+    <h4>核心挑战：多用户环境下的数据安全、缓存一致性与并发控制</h4>
+    <p>系统需要服务多个用户，每个用户的<b>财报文档、向量数据、持仓记录</b>必须严格隔离；行情数据需要在<b>实时性与 API 调用成本</b>之间取得平衡；多个用户可能同时请求分析同一只股票，需要避免<b>重复计算</b>和<b>资源浪费</b>。此外，Tushare 返回的 pandas DataFrame 中包含 <code>np.int64</code>、<code>np.float64</code>、<code>NaN</code> 等类型，<b>无法直接 JSON 序列化</b>写入 Redis。</p>
+  </div>
+</div>
+
+<div class="narr-intro">针对上述挑战，我们从三个维度构建了完整的多用户基础设施：<b>数据隔离层</b>确保用户数据不交叉泄露，<b>分层缓存层</b>在实时性与成本之间取得平衡，<b>分布式锁层</b>防止并发分析造成资源浪费。三个层面各自独立又协同工作，共同支撑多用户并发场景下的数据安全与系统性能。</div>
+
+<!-- ==================== Section 1: Data Isolation ==================== -->
+<div class="section sec-iso">
+  <h3>数据隔离架构 <span class="tag">三层隔离 · 用户数据零交叉</span></h3>
+  <div class="iso-grid">
+    <div class="iso-card">
+      <h5>向量库隔离（ChromaDB）</h5>
+      <div class="items">
+        <b>策略</b>：每用户独立 collection<br>
+        <b>命名规则</b>：<code>user_{id}_docs</code><br>
+        <b>创建方式</b>：<code>get_or_create_collection()</code><br>
+        <b>相似度</b>：cosine 空间<br>
+        <b>Embedding</b>：SiliconFlowEmbedding 适配
+      </div>
+      <div class="key-line">user_1_docs · user_2_docs · user_9999_docs</div>
+    </div>
+
+    <div class="iso-card">
+      <h5>文档记录隔离（SQLAlchemy）</h5>
+      <div class="items">
+        <b>模型</b>：<code>Document</code> 表<br>
+        <b>隔离字段</b>：<code>user_id</code> 外键<br>
+        <b>查询过滤</b>：所有查询自动带 <code>WHERE user_id=?</code><br>
+        <b>存储内容</b>：文件名 / 路径 / chunk 数 / 入库时间<br>
+        <b>级联删除</b>：删文档同时清 collection 条目
+      </div>
+      <div class="key-line">SELECT * FROM document WHERE user_id = :uid</div>
+    </div>
+
+    <div class="iso-card">
+      <h5>虚拟持仓隔离（Portfolio）</h5>
+      <div class="items">
+        <b>模型</b>：<code>Portfolio</code> + <code>PortfolioTransaction</code><br>
+        <b>隔离字段</b>：<code>user_id</code> 外键<br>
+        <b>费用计算</b>：A 股佣金万2.5 + 印花税<br>
+        <b>成本方式</b>：加权平均成本法<br>
+        <b>实时估值</b>：联动 BaoStock 最新行情
+      </div>
+      <div class="key-line">Portfolio.user_id = current_user.id</div>
+    </div>
+  </div>
+</div>
+
+<p class="narr">数据隔离确保了用户之间的安全边界。而在行情数据层面，所有用户共享同一份 Tushare 数据源，通过 Redis 分层缓存策略避免重复 API 调用。缓存系统采用了<b>"存储型"设计</b>而非传统 TTL 过期 — 数据永久保存，仅在"过时"时触发刷新：</p>
+
+<!-- ==================== Section 2: Cache ==================== -->
+<div class="section sec-cache">
+  <h3>Redis 分层缓存架构 <span class="tag">market/redis_cache.py · Stale-While-Revalidate</span></h3>
+  
+  <table class="cache-table">
+    <tr>
+      <th>数据类型</th>
+      <th>Key 格式</th>
+      <th>stale_type</th>
+      <th>更新策略</th>
+      <th>典型场景</th>
+    </tr>
+    <tr>
+      <td class="left">股票列表 / 交易日历 / 指数基础</td>
+      <td><code>tushare:stock_basic:*</code></td>
+      <td class="accent">0 (static)</td>
+      <td>永不主动失效</td>
+      <td>股票代码查找</td>
+    </tr>
+    <tr>
+      <td class="left">日K线 / 每日指标 / 资金流向 / 指数行情</td>
+      <td><code>tushare:daily:000001.SZ:*</code></td>
+      <td class="accent">1 (daily)</td>
+      <td>latest_date < 最近交易日 → 刷新</td>
+      <td>个股分析、Agent 行情</td>
+    </tr>
+    <tr>
+      <td class="left">资产负债表 / 现金流量表</td>
+      <td><code>tushare:balancesheet:*</code></td>
+      <td class="accent">2 (financial)</td>
+      <td>latest_date 落后 > 2 个季度 → 刷新</td>
+      <td>财务分析、基本面</td>
+    </tr>
+  </table>
+
+  <div class="stale-box">
+    <h5>三种 Stale 判断策略（_is_stale）</h5>
+    <div class="stale-grid">
+      <div class="stale-item stale-static">
+        <div class="type">type=0 · Static</div>
+        永不过时<br>股票列表 / 日历 / 指数基础
+      </div>
+      <div class="stale-item stale-daily">
+        <div class="type">type=1 · Daily</div>
+        最新 trade_date < _latest_trading_day()<br>自动跳过周末、收盘前用前一日
+      </div>
+      <div class="stale-item stale-financial">
+        <div class="type">type=2 · Quarterly</div>
+        最新 end_date 落后 > 2 个季度<br>季报/年报低频更新
+      </div>
+    </div>
+  </div>
+
+  <div class="sanitize-box">
+    <h5>_sanitize_records：numpy → Python 原生类型转换</h5>
+    <div class="sanitize-grid">
+      <div class="sanitize-col">
+        <div class="row"><span class="from"><code>np.int64</code> (如 1234567)</span></div>
+        <div class="row"><span class="from"><code>np.float64</code> (如 3.14)</span></div>
+        <div class="row"><span class="from"><code>np.bool_</code></span></div>
+        <div class="row"><span class="from"><code>NaN / Inf</code></span></div>
+        <div class="row"><span class="from"><code>pd.Timestamp</code></span></div>
+        <div class="row"><span class="from"><code>pd.NaT</code></span></div>
+      </div>
+      <div class="sanitize-arrow">→</div>
+      <div class="sanitize-col">
+        <div class="row"><span class="to"><code>int</code> (Python 原生)</span></div>
+        <div class="row"><span class="to"><code>float</code> (Python 原生)</span></div>
+        <div class="row"><span class="to"><code>bool</code> (Python 原生)</span></div>
+        <div class="row"><span class="to"><code>None</code> (安全 JSON 值)</span></div>
+        <div class="row"><span class="to"><code>"20240630"</code> (字符串)</span></div>
+        <div class="row"><span class="to"><code>None</code></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="narr">缓存层解决了数据获取的效率问题，但在 Agent 分析场景下，还需要防止多个用户同时触发同一只股票的深度分析（涉及联网搜索 + Tushare 数据拉取 + K2.5 推理，单次耗时可达数十秒）。为此我们设计了基于 Redis 的分布式互斥锁：</p>
+
+<!-- ==================== Section 3: Agent Mutex ==================== -->
+<div class="section sec-lock">
+  <h3>Agent 分布式互斥锁 <span class="tag">agent/service.py · SET NX EX · 防并发分析</span></h3>
+
+  <div class="lock-flow">
+    <div class="lock-panel">
+      <h5>互斥锁抢占流程</h5>
+      <div class="code"><span class="c"># 1. 检查缓存结果</span>
+cached = r.get(<span class="s">"agent:result:{ts_code}"</span>)
+<span class="k">if</span> cached: <span class="k">return</span> json.loads(cached)
+
+<span class="c"># 2. 尝试抢锁 (原子操作)</span>
+acquired = r.set(
+    <span class="s">"agent:lock:{ts_code}"</span>,
+    <span class="s">"1"</span>,
+    <span class="n">nx=True</span>,  <span class="c"># 仅不存在时设置</span>
+    <span class="n">ex=300</span>    <span class="c"># 5min TTL 防死锁</span>
+)
+<span class="k">if not</span> acquired:
+    <span class="k">return</span> {<span class="s">"status": "running"</span>}
+
+<span class="c"># 3. 后台线程执行分析</span>
+Thread(target=_bg).start()
+<span class="k">return</span> {<span class="s">"status": "running"</span>}</div>
+      <div class="note">SET NX EX 保证原子性，避免竞态条件</div>
+    </div>
+
+    <div class="lock-panel">
+      <h5>状态机与 TTL 管理</h5>
+      <div class="code"><span class="c"># 状态机: idle → running → done</span>
+<span class="c"># 前端轮询 get_analysis_status()</span>
+
+<span class="c"># 分析成功:</span>
+r.setex(<span class="s">"agent:result:{ts_code}"</span>,
+    <span class="n">600</span>,  <span class="c"># 结果缓存 10min</span>
+    json.dumps(result))
+r.set(<span class="s">"agent:status:{ts_code}"</span>,
+    <span class="s">"done"</span>, <span class="n">ex=600</span>)
+
+<span class="c"># 分析失败:</span>
+r.setex(<span class="s">"agent:result:{ts_code}"</span>,
+    <span class="n">60</span>,   <span class="c"># 错误缓存 1min</span>
+    json.dumps(error))
+
+<span class="c"># 最终: 释放锁</span>
+r.delete(<span class="s">"agent:lock:{ts_code}"</span>)</div>
+      <div class="note">锁 TTL=5min 防死锁 · 结果 TTL=10min 防反复计算</div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Key Metrics ==================== -->
+<div class="metrics">
+  <div class="m"><div class="val">3 层</div><div class="lbl">数据隔离维度</div></div>
+  <div class="m"><div class="val">3 级</div><div class="lbl">缓存 stale 策略</div></div>
+  <div class="m"><div class="val">SET NX</div><div class="lbl">原子互斥锁</div></div>
+  <div class="m"><div class="val">5 min</div><div class="lbl">锁 TTL (防死锁)</div></div>
+  <div class="m"><div class="val">10 min</div><div class="lbl">结果缓存 TTL</div></div>
+  <div class="m"><div class="val">6 种</div><div class="lbl">numpy 类型转换</div></div>
+</div>
+
+<p class="narr">上述三层基础设施在实际运行中相互配合，但仍有几个关键工程问题需要注意。以下是我们在多用户并发场景下遇到的三个典型挑战及对应的解决方案：</p>
+
+<!-- ==================== Difficulty Notes ==================== -->
+<div class="difficulty">
+  <h4>⚙ 设计难点与解决思路</h4>
+  <div class="diff-grid">
+    <div class="diff-item">
+      <div class="q">❶ numpy 类型的 JSON 序列化</div>
+      <div class="a">Tushare 返回 DataFrame 含 <code>np.int64</code>、<code>NaN</code>、<code>pd.NaT</code> 等类型，直接 <code>json.dumps</code> 会抛 <code>TypeError</code>。解法：<code>_sanitize_records()</code> 逐字段类型判断，<b>6 种 numpy 类型</b>统一转为 Python 原生类型，NaN/Inf/NaT 转为 None</div>
+    </div>
+    <div class="diff-item">
+      <div class="q">❷ 缓存一致性 vs API 成本</div>
+      <div class="a">传统 TTL 过期会导致大量无意义的 API 重复请求。解法：采用 <b>Stale-While-Revalidate</b> 模式 — 数据永久存储，仅在 <code>_is_stale()</code> 判定过时时才触发刷新，且过时期间<b>旧数据继续服务</b>，API 返回空时不覆盖旧数据</div>
+    </div>
+    <div class="diff-item">
+      <div class="q">❸ 分布式锁的死锁防护</div>
+      <div class="a">如果持锁线程崩溃，锁永远不释放。解法：<code>SET NX EX 300</code> 设置 <b>5 分钟自动过期</b>；分析完成后 finally 块中主动 <code>DELETE</code> 释放锁；错误结果缓存 1 分钟（vs 正常 10 分钟），让用户快速重试</div>
+    </div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

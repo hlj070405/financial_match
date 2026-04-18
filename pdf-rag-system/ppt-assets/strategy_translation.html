@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>自然语言→量化策略翻译架构</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Microsoft YaHei','SimHei',sans-serif;background:#fff;color:#1a1a2e;display:flex;justify-content:center;padding:24px}
+.wrap{width:900px}
+
+/* ---- Title ---- */
+.title{text-align:center;margin-bottom:6px}
+.title h2{font-size:15px;font-weight:700;letter-spacing:3px;color:#1a1a2e}
+.title .sub{font-size:10px;color:#888;margin-top:2px;letter-spacing:1px}
+
+/* ---- Narrative ---- */
+.narr{font-size:9.5px;color:#444;line-height:1.7;margin:8px 0;padding:0 2px;text-indent:2em}
+.narr b{color:#1a1a2e}
+.narr code{
+  background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;
+  padding:0 3px;font-size:7.5px;font-family:'Consolas','Monaco',monospace;color:#c0392b
+}
+.narr-intro{
+  font-size:9.5px;color:#444;line-height:1.7;margin:6px 0 12px;
+  padding:6px 12px;background:#f7f9fc;border-left:3px solid #e67e22;border-radius:0 4px 4px 0
+}
+.narr-intro b{color:#1a1a2e}
+
+/* ---- Problem Banner ---- */
+.problem{
+  background:linear-gradient(135deg,#fff5f5,#fff0f0);
+  border:1px solid #e8c4c4;border-radius:6px;
+  padding:10px 14px;margin:10px 0 8px;display:flex;gap:10px;align-items:flex-start
+}
+.problem .icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.problem .content{flex:1}
+.problem .content h4{font-size:10.5px;color:#c0392b;margin-bottom:3px;font-weight:700}
+.problem .content p{font-size:9px;color:#666;line-height:1.6}
+.problem .content p b{color:#c0392b}
+
+/* ---- Pipeline Flow ---- */
+.pipeline{
+  margin-bottom:12px;padding:12px 14px;
+  border:1.5px solid #2c3e50;border-radius:8px;
+  background:linear-gradient(135deg,#fafbfc,#f0f3f5)
+}
+.pipeline h4{font-size:10.5px;font-weight:700;margin-bottom:10px;color:#2c3e50;text-align:center}
+.pipe-flow{display:flex;align-items:stretch;justify-content:center;gap:0}
+.pipe-node{
+  padding:8px 10px;border-radius:6px;font-size:8.5px;font-weight:600;
+  text-align:center;line-height:1.4;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;min-width:100px
+}
+.pipe-node .sub{font-size:7px;font-weight:400;color:#666;margin-top:2px}
+.pipe-arrow{display:flex;align-items:center;font-size:13px;color:#aaa;padding:0 4px}
+.pn-user{background:#eaf2fd;border:1.5px solid #aed6f1;color:#1a5276}
+.pn-llm{background:#fef5e7;border:1.5px solid #f5cba7;color:#7e3f00}
+.pn-flex{background:#f4ecf7;border:1.5px solid #d2b4de;color:#6c3483}
+.pn-bt{background:#d5f5e3;border:1.5px solid #82e0aa;color:#145a32}
+.pn-result{background:#fce4ec;border:1.5px solid #f1948a;color:#922b21}
+
+/* ---- Translation Example ---- */
+.example-box{
+  margin-bottom:12px;border:1.5px solid #e67e22;border-radius:8px;
+  padding:12px 14px;position:relative;overflow:hidden;background:#fff
+}
+.example-box::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,#e67e22,#f0b27a)
+}
+.example-box h3{font-size:11px;font-weight:700;margin:2px 0 10px;color:#d35400;display:flex;align-items:center;gap:6px}
+.example-box h3 .tag{
+  display:inline-block;padding:1px 6px;border-radius:3px;font-size:7.5px;font-weight:600;
+  background:#fef5e7;color:#b7590a;border:1px solid #f5cba7
+}
+.ex-grid{display:grid;grid-template-columns:1fr 20px 1fr;gap:0;align-items:start}
+.ex-col{font-size:8.5px;line-height:1.7}
+.ex-col .label{font-weight:700;color:#2c3e50;margin-bottom:4px;font-size:9px;display:flex;align-items:center;gap:4px}
+.ex-col .label .badge{
+  display:inline-block;padding:0 5px;border-radius:3px;font-size:7px;font-weight:600
+}
+.badge-nl{background:#eaf2fd;color:#2471a3;border:1px solid #aed6f1}
+.badge-json{background:#f4ecf7;color:#6c3483;border:1px solid #d2b4de}
+.ex-col .item{margin-bottom:6px;padding:5px 8px;background:#f8f9fa;border:1px solid #e8e8e8;border-radius:4px}
+.ex-col .item .q{color:#555;font-style:italic;margin-bottom:2px}
+.ex-col .item .q b{color:#c0392b;font-style:normal}
+.ex-col code{
+  background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;
+  padding:0 3px;font-size:7.5px;font-family:'Consolas','Monaco',monospace;color:#c0392b
+}
+.ex-col .code-block{
+  font-family:'Consolas','Monaco',monospace;font-size:7.5px;
+  background:#2c3e50;color:#ecf0f1;padding:5px 8px;border-radius:4px;
+  line-height:1.6;white-space:pre;margin-bottom:6px
+}
+.ex-col .code-block .k{color:#f39c12}
+.ex-col .code-block .s{color:#2ecc71}
+.ex-col .code-block .n{color:#e74c3c}
+.ex-arrow{display:flex;align-items:center;justify-content:center;font-size:16px;color:#e67e22}
+
+/* ---- Indicator Table ---- */
+.ind-section{margin-bottom:12px}
+.ind-section h3{font-size:11px;font-weight:700;margin-bottom:8px;color:#2c3e50;text-align:center}
+.ind-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ind-card{
+  border:1.5px solid;border-radius:8px;padding:10px 12px;
+  position:relative;overflow:hidden;background:#fff
+}
+.ind-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.ind-card h4{font-size:10px;font-weight:700;margin:2px 0 6px;display:flex;align-items:center;gap:6px}
+.ind-card h4 .cnt{
+  display:inline-block;padding:0 6px;border-radius:10px;font-size:8px;font-weight:700;color:#fff
+}
+
+.ind-indicators{border-color:#8e44ad}
+.ind-indicators::before{background:linear-gradient(90deg,#8e44ad,#c39bd3)}
+.ind-indicators h4 .cnt{background:#8e44ad}
+.ind-operators{border-color:#27ae60}
+.ind-operators::before{background:linear-gradient(90deg,#27ae60,#82e0aa)}
+.ind-operators h4 .cnt{background:#27ae60}
+
+.itbl{width:100%;border-collapse:collapse;font-size:8.5px}
+.itbl th{padding:4px 6px;font-weight:600;text-align:left;font-size:8px;border-bottom:1.5px solid #ddd}
+.itbl td{padding:3px 6px;border-bottom:1px solid #eee;line-height:1.4}
+.itbl td code{
+  background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;
+  padding:0 3px;font-size:7.5px;font-family:'Consolas','Monaco',monospace;color:#c0392b
+}
+.itbl .cat{color:#888;font-size:7.5px}
+
+/* ---- Architecture Cards ---- */
+.arch-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px}
+.arch{
+  border:1.5px solid;border-radius:8px;padding:11px 12px 9px;
+  position:relative;overflow:hidden;background:#fff
+}
+.arch::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.arch .num{
+  position:absolute;top:8px;right:10px;
+  width:22px;height:22px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:9px;font-weight:700;color:#fff
+}
+.arch h3{font-size:10.5px;font-weight:700;margin:2px 0 5px;padding-right:26px}
+.arch h3 .en{font-size:8px;color:#999;font-weight:400;display:block;margin-top:1px}
+.arch .items{font-size:8.5px;color:#444;line-height:1.7}
+.arch .items b{color:#1a1a2e}
+.arch .items code{
+  background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;
+  padding:0 3px;font-size:7.5px;font-family:'Consolas','Monaco',monospace;color:#c0392b
+}
+
+.arch-1{border-color:#3498db}
+.arch-1::before{background:linear-gradient(90deg,#3498db,#85c1e9)}
+.arch-1 .num{background:#3498db}
+.arch-2{border-color:#8e44ad}
+.arch-2::before{background:linear-gradient(90deg,#8e44ad,#c39bd3)}
+.arch-2 .num{background:#8e44ad}
+.arch-3{border-color:#27ae60}
+.arch-3::before{background:linear-gradient(90deg,#27ae60,#82e0aa)}
+.arch-3 .num{background:#27ae60}
+
+/* ---- Cross Implementation ---- */
+.cross-box{
+  margin-bottom:12px;border:1.5px solid #e74c3c;border-radius:8px;
+  padding:12px 14px;position:relative;overflow:hidden;background:#fff
+}
+.cross-box::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,#e74c3c,#f1948a)
+}
+.cross-box h3{font-size:11px;font-weight:700;margin:2px 0 8px;color:#c0392b;display:flex;align-items:center;gap:6px}
+.cross-box h3 .tag{
+  display:inline-block;padding:1px 6px;border-radius:3px;font-size:7.5px;font-weight:600;
+  background:#fdedec;color:#922b21;border:1px solid #f5b7b1
+}
+.cross-grid{display:grid;grid-template-columns:1fr 30px 1fr;gap:0;align-items:center}
+.cross-panel{padding:6px 10px;border:1px solid #e8e8e8;border-radius:6px;background:#fafbfc}
+.cross-panel h5{font-size:9px;font-weight:700;color:#2c3e50;margin-bottom:4px;text-align:center}
+.cross-panel .code{
+  font-family:'Consolas','Monaco',monospace;font-size:8px;
+  background:#2c3e50;color:#ecf0f1;padding:6px 8px;border-radius:4px;
+  line-height:1.5;white-space:pre
+}
+.cross-panel .code .k{color:#f39c12}
+.cross-panel .code .c{color:#7f8c8d;font-style:italic}
+.cross-panel .note{font-size:7.5px;color:#888;margin-top:4px;text-align:center}
+.cross-vs{display:flex;align-items:center;justify-content:center;font-size:11px;color:#e74c3c;font-weight:700}
+
+/* ---- Metrics Bar ---- */
+.metrics{display:flex;gap:6px;justify-content:center;margin:12px 0}
+.m{
+  border:1px solid #ddd;border-radius:6px;padding:6px 14px;
+  text-align:center;background:#fafbfc;flex:1;max-width:150px
+}
+.m .val{font-size:15px;font-weight:700;color:#2c3e50;line-height:1.2}
+.m .lbl{font-size:7.5px;color:#888;margin-top:1px}
+
+/* ---- Difficulty Notes ---- */
+.difficulty{
+  padding:10px 14px;
+  border:1px solid #d5d8dc;border-radius:6px;
+  background:#fdfdfe
+}
+.difficulty h4{font-size:10px;font-weight:700;margin-bottom:6px;color:#2c3e50}
+.diff-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.diff-item{padding:6px 8px;border-radius:4px;border:1px solid #e8e8e8;background:#fff}
+.diff-item .q{font-size:8.5px;color:#c0392b;font-weight:600;margin-bottom:3px}
+.diff-item .a{font-size:8px;color:#555;line-height:1.5}
+.diff-item .a b{color:#1a1a2e}
+
+/* ---- Backtest Output ---- */
+.bt-output{
+  margin-bottom:12px;border:1.5px solid #27ae60;border-radius:8px;
+  padding:12px 14px;position:relative;overflow:hidden;background:#fff
+}
+.bt-output::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,#27ae60,#82e0aa)
+}
+.bt-output h3{font-size:11px;font-weight:700;margin:2px 0 8px;color:#1e8449;display:flex;align-items:center;gap:6px}
+.bt-output h3 .tag{
+  display:inline-block;padding:1px 6px;border-radius:3px;font-size:7.5px;font-weight:600;
+  background:#eafaf1;color:#1a7a42;border:1px solid #a9dfbf
+}
+.bt-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.bt-panel{font-size:8.5px;color:#444;line-height:1.7}
+.bt-panel b{color:#1a1a2e}
+.bt-panel code{
+  background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;
+  padding:0 3px;font-size:7.5px;font-family:'Consolas','Monaco',monospace;color:#c0392b
+}
+.bt-panel .metric-row{
+  display:flex;gap:6px;flex-wrap:wrap;margin-top:4px
+}
+.bt-panel .metric-tag{
+  display:inline-block;padding:2px 8px;border-radius:4px;font-size:7.5px;
+  background:#eafaf1;border:1px solid #a9dfbf;color:#145a32;font-weight:600
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- Title -->
+<div class="title">
+  <h2>自然语言→量化策略翻译架构</h2>
+  <div class="sub">Natural Language → Quantitative Strategy Translation · strategies.py + rag/service.py</div>
+</div>
+
+<!-- Problem Statement -->
+<div class="problem">
+  <div class="icon">⚠</div>
+  <div class="content">
+    <h4>核心挑战：自然语言交易策略的结构化翻译与精确执行</h4>
+    <p>用户用自然语言描述交易策略（如"<b>布林带下轨抄底且放量确认</b>"、"<b>5日线上穿20日线就买</b>"），系统需要准确理解策略意图，翻译为<b>可执行的量化条件</b>，并在回测引擎中精确运行。难点在于：用户表述模糊（"均线策略"没指定哪根线）、条件不完整（只说买入没说卖出）、交叉信号的数学定义需要严格实现（前一根K线和当前K线的相对位置判断）。</p>
+  </div>
+</div>
+
+<div class="narr-intro">针对上述挑战，我们设计了 <b>K2.5 Agent + FlexibleStrategy</b> 协同架构：由 LLM 负责将自然语言翻译为结构化条件 JSON，由 FlexibleStrategy 解析条件并驱动 Backtrader 引擎执行回测。LLM 翻译层通过详尽的 system prompt 和翻译示例保障准确性，策略执行层通过统一的表达式解析器和指标缓存机制保障可靠性。整体数据流与核心模块如下：</div>
+
+<!-- ==================== End-to-End Pipeline ==================== -->
+<div class="pipeline">
+  <h4>端到端策略翻译与回测数据流</h4>
+  <div class="pipe-flow">
+    <div class="pipe-node pn-user">用户自然语言<div class="sub">"布林带下轨抄底<br>且放量确认"</div></div>
+    <span class="pipe-arrow">→</span>
+    <div class="pipe-node pn-llm">K2.5 翻译<div class="sub">Agent Tool Call<br>→ 条件 JSON</div></div>
+    <span class="pipe-arrow">→</span>
+    <div class="pipe-node pn-flex">FlexibleStrategy<div class="sub">_parse_expr()<br>指标表达式解析</div></div>
+    <span class="pipe-arrow">→</span>
+    <div class="pipe-node pn-bt">Backtrader 引擎<div class="sub">A股费用模拟<br>BaoStock 日线数据</div></div>
+    <span class="pipe-arrow">→</span>
+    <div class="pipe-node pn-result">回测结果<div class="sub">收益/夏普/回撤<br>交易明细 + 资金曲线</div></div>
+  </div>
+</div>
+
+<p class="narr">上述数据流的每个环节分别由三个核心模块承担：LLM 翻译层负责语义理解与结构化转换，策略解析层负责表达式解析与指标计算，回测执行层负责真实费用模拟与统计分析。三层各司其职、逐层解耦：</p>
+
+<!-- ==================== Three Architecture Layers ==================== -->
+<div class="arch-grid">
+  <!-- Layer 1: LLM Translation -->
+  <div class="arch arch-1">
+    <div class="num">1</div>
+    <h3>LLM 翻译层<span class="en">K2.5 Agent · System Prompt</span></h3>
+    <div class="items">
+      <b>触发方式</b>：K2.5 Agent 识别回测意图 → 自动调用 <code>run_backtest</code> Tool<br>
+      <b>翻译目标</b>：自然语言 → <code>buy_conditions</code> + <code>sell_conditions</code> JSON<br>
+      <b>默认值兜底</b>：均线默认 <code>sma(5)/sma(20)</code>，RSI 默认 <code>14/30/70</code><br>
+      <b>条件补全</b>：用户只说买入 → LLM 自动补全对称卖出条件<br>
+      <b>Prompt 工程</b>：内嵌 <b>4 组翻译示例</b>（SMA/RSI/布林带/MACD）确保输出格式一致<br>
+      <b>多股对比</b>：行业级问题自动选 3-5 只代表个股分别回测
+    </div>
+  </div>
+
+  <!-- Layer 2: Strategy Engine -->
+  <div class="arch arch-2">
+    <div class="num">2</div>
+    <h3>策略解析层<span class="en">FlexibleStrategy · _parse_expr</span></h3>
+    <div class="items">
+      <b>核心类</b>：<code>FlexibleStrategy(bt.Strategy)</code><br>
+      <b>表达式解析</b>：<code>_parse_expr("sma(5)")</code> → <code>("sma", [5])</code> 元组<br>
+      <b>指标缓存</b>：<code>_ind_cache</code> 按需创建 Backtrader 指标对象，避免重复计算<br>
+      <b>值获取</b>：<code>_get_val(expr, offset)</code> 统一处理指标/价格/常量<br>
+      <b>条件求值</b>：<code>_eval_cond()</code> 支持 6 种运算符<br>
+      <b>逻辑组合</b>：<code>_check_conditions()</code> 支持 <code>all</code>(AND) / <code>any</code>(OR)
+    </div>
+  </div>
+
+  <!-- Layer 3: Backtest Engine -->
+  <div class="arch arch-3">
+    <div class="num">3</div>
+    <h3>回测执行层<span class="en">Backtrader Engine · BaoStock</span></h3>
+    <div class="items">
+      <b>数据源</b>：BaoStock 日线数据 + <b>Parquet 本地缓存</b><br>
+      <b>费用模拟</b>：<code>AShareCommission</code> 佣金万2.5 + 印花税卖出0.05%<br>
+      <b>下单规则</b>：<code>AShareRoundLotSizer</code> 90%仓位，100股整手<br>
+      <b>统计指标</b>：年化收益 / 夏普比率 / 最大回撤 / 胜率<br>
+      <b>交易记录</b>：<code>TradeCollector</code> 逐笔记录开平仓<br>
+      <b>资金曲线</b>：<code>EquityCurve</code> 每日净值，抽样 ≤500 点
+    </div>
+  </div>
+</div>
+
+<p class="narr">为了更直观地展示 K2.5 如何将用户的自然语言翻译为结构化条件，以下是四组典型场景的输入输出对照，覆盖均线交叉、振荡指标、多条件组合、趋势指标四种常见策略类型：</p>
+
+<!-- ==================== Translation Examples ==================== -->
+<div class="example-box">
+  <h3>翻译示例：自然语言 → 条件 JSON <span class="tag">K2.5 Agent Tool Call · run_backtest</span></h3>
+  <div class="ex-grid">
+    <div class="ex-col">
+      <div class="label"><span class="badge badge-nl">INPUT</span> 用户自然语言</div>
+      <div class="item">
+        <div class="q">❶ "<b>5日线上穿20日线就买，下穿就卖</b>"</div>
+      </div>
+      <div class="item">
+        <div class="q">❷ "<b>RSI低于30买入，高于70卖出</b>"</div>
+      </div>
+      <div class="item">
+        <div class="q">❸ "<b>价格跌破布林带下轨 且 成交量放大时买入</b>"</div>
+      </div>
+      <div class="item">
+        <div class="q">❹ "<b>MACD金叉买入，死叉卖出</b>"</div>
+      </div>
+    </div>
+
+    <div class="ex-arrow">→</div>
+
+    <div class="ex-col">
+      <div class="label"><span class="badge badge-json">OUTPUT</span> 结构化条件 JSON</div>
+      <div class="code-block"><span class="k">buy</span>: [{<span class="s">"sma(5)"</span> <span class="n">cross_above</span> <span class="s">"sma(20)"</span>}]
+<span class="k">sell</span>: [{<span class="s">"sma(5)"</span> <span class="n">cross_below</span> <span class="s">"sma(20)"</span>}]</div>
+      <div class="code-block"><span class="k">buy</span>: [{<span class="s">"rsi(14)"</span> <span class="n">&lt;</span> <span class="s">"30"</span>}]
+<span class="k">sell</span>: [{<span class="s">"rsi(14)"</span> <span class="n">&gt;</span> <span class="s">"70"</span>}]</div>
+      <div class="code-block"><span class="k">buy</span>: [{<span class="s">"price"</span> <span class="n">&lt;</span> <span class="s">"boll_lower(20)"</span>},
+       {<span class="s">"volume"</span> <span class="n">&gt;</span> <span class="s">"volume_ma(20)"</span>}]
+<span class="k">logic</span>: <span class="s">"all"</span> (AND)</div>
+      <div class="code-block"><span class="k">buy</span>: [{<span class="s">"macd()"</span> <span class="n">cross_above</span> <span class="s">"macd_signal()"</span>}]
+<span class="k">sell</span>: [{<span class="s">"macd()"</span> <span class="n">cross_below</span> <span class="s">"macd_signal()"</span>}]</div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Indicators & Operators ==================== -->
+<div class="ind-section">
+  <div class="ind-grid">
+    <div class="ind-card ind-indicators">
+      <h4>技术指标表达式 <span class="cnt">11种</span></h4>
+      <table class="itbl">
+        <tr><th>表达式</th><th>含义</th><th>分类</th></tr>
+        <tr><td><code>price</code></td><td>当前收盘价</td><td class="cat">价格</td></tr>
+        <tr><td><code>sma(N)</code></td><td>N日简单移动均线</td><td class="cat">均线</td></tr>
+        <tr><td><code>ema(N)</code></td><td>N日指数移动均线</td><td class="cat">均线</td></tr>
+        <tr><td><code>rsi(N)</code></td><td>N日相对强弱指标</td><td class="cat">振荡</td></tr>
+        <tr><td><code>macd()</code></td><td>MACD 线 (DIF)</td><td class="cat">趋势</td></tr>
+        <tr><td><code>macd_signal()</code></td><td>MACD 信号线 (DEA)</td><td class="cat">趋势</td></tr>
+        <tr><td><code>boll_upper(N)</code></td><td>N日布林带上轨</td><td class="cat">通道</td></tr>
+        <tr><td><code>boll_lower(N)</code></td><td>N日布林带下轨</td><td class="cat">通道</td></tr>
+        <tr><td><code>boll_mid(N)</code></td><td>N日布林带中轨</td><td class="cat">通道</td></tr>
+        <tr><td><code>volume</code></td><td>当日成交量</td><td class="cat">量能</td></tr>
+        <tr><td><code>volume_ma(N)</code></td><td>N日成交量均线</td><td class="cat">量能</td></tr>
+      </table>
+    </div>
+
+    <div class="ind-card ind-operators">
+      <h4>运算符 <span class="cnt">6种</span></h4>
+      <table class="itbl">
+        <tr><th>运算符</th><th>含义</th><th>实现逻辑</th></tr>
+        <tr><td><code>&gt;</code></td><td>大于</td><td>left[0] &gt; right[0]</td></tr>
+        <tr><td><code>&lt;</code></td><td>小于</td><td>left[0] &lt; right[0]</td></tr>
+        <tr><td><code>&gt;=</code></td><td>大于等于</td><td>left[0] &gt;= right[0]</td></tr>
+        <tr><td><code>&lt;=</code></td><td>小于等于</td><td>left[0] &lt;= right[0]</td></tr>
+        <tr><td><code>cross_above</code></td><td>金叉（从下穿越）</td><td>prev_l ≤ prev_r <b>且</b> left &gt; right</td></tr>
+        <tr><td><code>cross_below</code></td><td>死叉（从上穿越）</td><td>prev_l ≥ prev_r <b>且</b> left &lt; right</td></tr>
+      </table>
+      <div style="margin-top:10px;padding:6px 8px;background:#eafaf1;border:1px solid #a9dfbf;border-radius:4px;font-size:8px;color:#145a32;text-align:center">
+        <b>逻辑组合</b>：多条件支持 <code>all</code>(AND) / <code>any</code>(OR)，默认 AND
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Cross Signal Detail ==================== -->
+<div class="cross-box">
+  <h3>交叉信号实现详解 <span class="tag">cross_above / cross_below · _eval_cond()</span></h3>
+  <div class="cross-grid">
+    <div class="cross-panel">
+      <h5>cross_above（金叉）</h5>
+      <div class="code"><span class="c"># 前一根K线: 左 ≤ 右（在下方）</span>
+prev_l = _get_val(left, <span class="k">-1</span>)
+prev_r = _get_val(right, <span class="k">-1</span>)
+
+<span class="c"># 当前K线: 左 > 右（穿越到上方）</span>
+<span class="k">return</span> prev_l <= prev_r <span class="k">and</span> left > right</div>
+      <div class="note">场景：SMA(5) 从下方穿越 SMA(20) → 买入信号</div>
+    </div>
+
+    <div class="cross-vs">VS</div>
+
+    <div class="cross-panel">
+      <h5>cross_below（死叉）</h5>
+      <div class="code"><span class="c"># 前一根K线: 左 ≥ 右（在上方）</span>
+prev_l = _get_val(left, <span class="k">-1</span>)
+prev_r = _get_val(right, <span class="k">-1</span>)
+
+<span class="c"># 当前K线: 左 < 右（穿越到下方）</span>
+<span class="k">return</span> prev_l >= prev_r <span class="k">and</span> left < right</div>
+      <div class="note">场景：SMA(5) 从上方穿越 SMA(20) → 卖出信号</div>
+    </div>
+  </div>
+</div>
+
+<p class="narr">策略经 Backtrader 引擎执行后，系统会生成结构化的回测报告返回给 K2.5 Agent，由 Agent 负责向用户客观解读回测结果，并展示策略翻译逻辑以便用户验证：</p>
+
+<!-- ==================== Backtest Output ==================== -->
+<div class="bt-output">
+  <h3>回测输出与结果解读 <span class="tag">run_backtest() → Agent 解读</span></h3>
+  <div class="bt-grid">
+    <div class="bt-panel">
+      <b>结构化输出</b>（返回给 K2.5 Agent 解读）：<br>
+      <code>strategy_code</code>：可读策略伪代码（"买入条件: SMA均线(5) 上穿↑ SMA均线(20)"）<br>
+      <code>summary</code>：年化收益 / 夏普比率 / 最大回撤 / 胜率 / 交易次数<br>
+      <code>sample_trades</code>：前 5 笔交易明细（开仓日/平仓日/盈亏%）<br>
+      <code>equity_curve</code>：资金曲线（≤500 点抽样，前端 ECharts 渲染）<br>
+      <b>展示要求</b>：Agent <b>必须</b>展示 strategy_code 让用户看到翻译逻辑
+    </div>
+    <div class="bt-panel">
+      <b>Agent 解读原则</b>（写入 system prompt）：<br>
+      · 客观陈述数据，<b>不美化</b>不理想的结果<br>
+      · 分析策略本身局限性（趋势策略在震荡市失效等）<br>
+      · 可建议尝试其他参数，但不过度承诺<br>
+      · 行业级问题自动选 3-5 只代表个股 → 汇总对比表格<br>
+      <div class="metric-row">
+        <span class="metric-tag">年化收益%</span>
+        <span class="metric-tag">夏普比率</span>
+        <span class="metric-tag">最大回撤%</span>
+        <span class="metric-tag">胜率%</span>
+        <span class="metric-tag">交易频率</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Key Metrics ==================== -->
+<div class="metrics">
+  <div class="m"><div class="val">11</div><div class="lbl">支持的技术指标</div></div>
+  <div class="m"><div class="val">6</div><div class="lbl">运算符类型</div></div>
+  <div class="m"><div class="val">AND/OR</div><div class="lbl">多条件逻辑组合</div></div>
+  <div class="m"><div class="val">A股</div><div class="lbl">真实费用模拟</div></div>
+  <div class="m"><div class="val">100股</div><div class="lbl">整手下单规则</div></div>
+  <div class="m"><div class="val">≤500点</div><div class="lbl">资金曲线抽样</div></div>
+</div>
+
+<p class="narr">在实际工程中，上述方案的核心难点集中在 LLM 翻译的鲁棒性和交叉信号的精确实现上。以下是我们遇到的三个关键挑战及对应的解决思路：</p>
+
+<!-- ==================== Difficulty Notes ==================== -->
+<div class="difficulty">
+  <h4>⚙ 设计难点与解决思路</h4>
+  <div class="diff-grid">
+    <div class="diff-item">
+      <div class="q">❶ LLM 翻译的模糊性兜底</div>
+      <div class="a">用户说"<b>均线策略</b>"没指定哪根线，说"<b>抄底</b>"没给阈值。解法：system prompt 内嵌 <b>4 组完整翻译示例</b> + 行业惯例默认值（均线 5/20、RSI 14/30/70），确保 K2.5 在信息不全时仍能生成合理条件</div>
+    </div>
+    <div class="diff-item">
+      <div class="q">❷ 买卖条件的不对称补全</div>
+      <div class="a">用户只说买入没说卖出，策略无法闭环。解法：system prompt 明确要求 "<b>条件不完整时合理补全卖出条件</b>"，如买入用 cross_above 则卖出用对称的 cross_below</div>
+    </div>
+    <div class="diff-item">
+      <div class="q">❸ cross_above/below 的边界精度</div>
+      <div class="a">交叉信号需对比<b>前一根K线与当前K线</b>的相对位置。边界条件 <code>prev_l <= prev_r and left > right</code> 必须用<b>非严格不等号</b>（<= 而非 <），否则两线重合时会漏判</div>
+    </div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

@@ -1911,6 +1911,9 @@ async def rag_chat_stream(
 
                     print(f"[RAG-Agent] Tool call round {_round+1}: {fn_name}({json.dumps(fn_args, ensure_ascii=False)})")
 
+                    # yield tool_call 事件（暴露完整的 function calling JSON）
+                    yield f"data: {json.dumps({'type': 'tool_call', 'tool_call_id': tc['id'], 'function': fn_name, 'arguments': fn_args, 'round': _round + 1}, ensure_ascii=False)}\n\n"
+
                     # $web_search 由 Kimi 内部处理
                     if fn_name == "$web_search":
                         yield f"data: {json.dumps({'type': 'phase', 'content': '正在联网搜索...'}, ensure_ascii=False)}\n\n"
@@ -2006,6 +2009,13 @@ async def rag_chat_stream(
                                     yield f"data: {json.dumps({'type': 'phase', 'content': _msg}, ensure_ascii=False)}\n\n"
                         except Exception:
                             pass
+
+                        # yield tool_result 事件（暴露完整的工具返回 JSON）
+                        try:
+                            _tr_json = json.loads(tool_result)
+                        except Exception:
+                            _tr_json = tool_result
+                        yield f"data: {json.dumps({'type': 'tool_result', 'tool_call_id': tc['id'], 'function': fn_name, 'result': _tr_json}, ensure_ascii=False)}\n\n"
 
                         messages.append({
                             "role": "tool",

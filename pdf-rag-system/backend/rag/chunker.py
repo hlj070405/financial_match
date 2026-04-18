@@ -175,6 +175,109 @@ def _split_into_sections(text: str) -> List[Dict]:
 
 
 # ---------------------------------------------------------------------------
+# 跨页表格修复
+# ---------------------------------------------------------------------------
+
+def _extract_trailing_table_header(lines: List[str]) -> List[str]:
+    """
+    从一组文本行的末尾向前搜索，提取表格列标题行。
+    表头特征：短行（<35字），包含"项目"/"年"/"季度"等标签，非数字主导。
+    返回找到的表头行列表（正序），找不到返回空列表。
+    """
+    if not lines:
+        return []
+
+    candidates = []
+    for line in reversed(lines):
+        stripped = line.strip()
+        if not stripped:
+            if candidates:
+                break
+            continue
+        if len(stripped) > 40:
+            break
+        digits = sum(c.isdigit() for c in stripped)
+        if len(stripped) > 0 and digits / len(stripped) > 0.5:
+            break
+        candidates.append(stripped)
+        if len(candidates) >= 10:
+            break
+
+    candidates.reverse()
+
+    header_markers = ['项目', '年', '季度', '单位', '期末', '期初', '本期', '上期', '增减']
+    header_text = ' '.join(candidates)
+    has_marker = any(m in header_text for m in header_markers)
+
+    if has_marker and len(candidates) >= 2:
+        return candidates
+    return []
+
+
+def _starts_with_table_data(lines: List[str], skip_noise: int = 3) -> bool:
+    """
+    检查内容前几行是否包含表格数据（数字密集的行）。
+    skip_noise: 跳过前N行噪声（如公司名、页码等）。
+    """
+    data_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        data_lines.append(stripped)
+        if len(data_lines) >= skip_noise + 5:
+            break
+
+    numeric_lines = 0
+    for line in data_lines[min(skip_noise, len(data_lines) - 1):]:
+        digits = sum(c.isdigit() for c in line)
+        if digits >= 3:
+            numeric_lines += 1
+
+    return numeric_lines >= 2
+
+
+def _repair_table_headers_across_pages(md_content: str) -> str:
+    """
+    修复跨页表格：当 ## 第X页 把表头和数据分到不同 section 时，
+    将上一 section 末尾的表头复制到下一 section 开头。
+    """
+    page_pattern = re.compile(r'(^## 第\d+页.*$)', re.MULTILINE)
+    parts = page_pattern.split(md_content)
+    # parts: [before_header0, header0, content0, header1, content1, ...]
+
+    if len(parts) < 3:
+        return md_content
+
+    result = [parts[0]]
+    repaired = 0
+
+    for i in range(1, len(parts), 2):
+        header = parts[i]
+        content = parts[i + 1] if i + 1 < len(parts) else ""
+
+        prev_text = result[-1] if result else ""
+        prev_lines = prev_text.split('\n')
+
+        table_header_lines = _extract_trailing_table_header(prev_lines)
+
+        if table_header_lines:
+            curr_lines = content.split('\n')
+            if _starts_with_table_data(curr_lines):
+                header_block = '\n'.join(table_header_lines)
+                content = f"\n{header_block}\n{content}"
+                repaired += 1
+
+        result.append(header)
+        result.append(content)
+
+    if repaired > 0:
+        print(f"[chunker] 修复了 {repaired} 处跨页表格表头")
+
+    return ''.join(result)
+
+
+# ---------------------------------------------------------------------------
 # 核心切分函数 (Markdown & 纯文本双轨支持)
 # ---------------------------------------------------------------------------
 
@@ -256,6 +359,9 @@ def _logical_chunk_markdown(
 
         if not text.strip():
             continue
+
+        # 修复跨页表格：将被 ## 第X页 切断的表头复制到下一页
+        text = _repair_table_headers_across_pages(text)
 
         md_splits = markdown_splitter.split_text(text)
 
