@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Embedding 异步并发与容错架构</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Microsoft YaHei','SimHei',sans-serif;background:#fff;color:#1a1a2e;display:flex;justify-content:center;padding:24px}
+.wrap{width:900px}
+
+/* ---- Title ---- */
+.title{text-align:center;margin-bottom:6px}
+.title h2{font-size:15px;font-weight:700;letter-spacing:3px;color:#1a1a2e}
+.title .sub{font-size:10px;color:#888;margin-top:2px;letter-spacing:1px}
+
+/* ---- Narrative ---- */
+.narr{font-size:9.5px;color:#444;line-height:1.7;margin:8px 0;padding:0 2px;text-indent:2em}
+.narr b{color:#1a1a2e}
+.narr code{background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;padding:0 3px;font-size:7.5px;font-family:'Consolas','Monaco',monospace;color:#c0392b}
+.narr-intro{
+  font-size:9.5px;color:#444;line-height:1.7;margin:6px 0 12px;
+  padding:6px 12px;background:#f7f9fc;border-left:3px solid #16a085;border-radius:0 4px 4px 0
+}
+.narr-intro b{color:#1a1a2e}
+
+/* ---- Problem Banner ---- */
+.problem{
+  background:linear-gradient(135deg,#fff5f5,#fff0f0);
+  border:1px solid #e8c4c4;border-radius:6px;
+  padding:10px 14px;margin:10px 0 8px;display:flex;gap:10px;align-items:flex-start
+}
+.problem .icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.problem .content{flex:1}
+.problem .content h4{font-size:10.5px;color:#c0392b;margin-bottom:3px;font-weight:700}
+.problem .content p{font-size:9px;color:#666;line-height:1.6}
+.problem .content p b{color:#c0392b}
+
+/* ---- Pipeline Flow ---- */
+.pipeline{
+  margin-bottom:12px;padding:12px 14px;
+  border:1.5px solid #2c3e50;border-radius:8px;
+  background:linear-gradient(135deg,#fafbfc,#f0f3f5)
+}
+.pipeline h4{font-size:10.5px;font-weight:700;margin-bottom:10px;color:#2c3e50;text-align:center}
+.pipe-flow{display:flex;align-items:stretch;justify-content:center;gap:0}
+.pipe-node{
+  padding:8px 10px;border-radius:6px;font-size:8.5px;font-weight:600;
+  text-align:center;line-height:1.4;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;min-width:105px
+}
+.pipe-node .sub{font-size:7px;font-weight:400;color:#666;margin-top:2px}
+.pipe-arrow{display:flex;align-items:center;font-size:13px;color:#aaa;padding:0 4px}
+.pn-input{background:#eaf2fd;border:1.5px solid #aed6f1;color:#1a5276}
+.pn-trunc{background:#fef5e7;border:1.5px solid #f5cba7;color:#7e3f00}
+.pn-batch{background:#f4ecf7;border:1.5px solid #d2b4de;color:#6c3483}
+.pn-api{background:#d5f5e3;border:1.5px solid #82e0aa;color:#145a32}
+.pn-merge{background:#fce4ec;border:1.5px solid #f1948a;color:#922b21}
+.pn-store{background:#e8f6f3;border:1.5px solid #a3e4d7;color:#0e6655}
+
+/* ---- Architecture Cards ---- */
+.arch-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px}
+.arch{
+  border:1.5px solid;border-radius:8px;padding:11px 12px 9px;
+  position:relative;overflow:hidden;background:#fff
+}
+.arch::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.arch .num{
+  position:absolute;top:8px;right:10px;width:22px;height:22px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff
+}
+.arch h3{font-size:10.5px;font-weight:700;margin:2px 0 5px;padding-right:26px}
+.arch h3 .en{font-size:8px;color:#999;font-weight:400;display:block;margin-top:1px}
+.arch .items{font-size:8.5px;color:#444;line-height:1.7}
+.arch .items b{color:#1a1a2e}
+.arch .items code{background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;padding:0 3px;font-size:7.5px;font-family:'Consolas','Monaco',monospace;color:#c0392b}
+
+.arch-1{border-color:#16a085}
+.arch-1::before{background:linear-gradient(90deg,#16a085,#76d7c4)}
+.arch-1 .num{background:#16a085}
+.arch-2{border-color:#e67e22}
+.arch-2::before{background:linear-gradient(90deg,#e67e22,#f0b27a)}
+.arch-2 .num{background:#e67e22}
+.arch-3{border-color:#8e44ad}
+.arch-3::before{background:linear-gradient(90deg,#8e44ad,#c39bd3)}
+.arch-3 .num{background:#8e44ad}
+
+/* ---- Fault Tolerance Diagram ---- */
+.fault-box{
+  margin-bottom:12px;border:1.5px solid #e74c3c;border-radius:8px;
+  padding:12px 14px;position:relative;overflow:hidden;background:#fff
+}
+.fault-box::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#e74c3c,#f1948a)}
+.fault-box h3{font-size:11px;font-weight:700;margin:2px 0 8px;color:#c0392b;display:flex;align-items:center;gap:6px}
+.fault-box h3 .tag{
+  display:inline-block;padding:1px 6px;border-radius:3px;font-size:7.5px;font-weight:600;
+  background:#fdedec;color:#922b21;border:1px solid #f5b7b1
+}
+.fault-flow{display:flex;flex-direction:column;gap:6px}
+.fault-row{display:flex;align-items:center;gap:6px}
+.fault-step{
+  padding:5px 10px;border-radius:5px;font-size:8.5px;font-weight:600;
+  line-height:1.4;flex:1;text-align:center
+}
+.fault-step .sub{font-size:7px;font-weight:400;color:#666;margin-top:1px}
+.fs-normal{background:#d5f5e3;border:1px solid #82e0aa;color:#145a32}
+.fs-error{background:#fdedec;border:1px solid #f5b7b1;color:#922b21}
+.fs-retry{background:#fef5e7;border:1px solid #f5cba7;color:#7e3f00}
+.fs-fallback{background:#f4ecf7;border:1px solid #d2b4de;color:#6c3483}
+.fault-arrow{font-size:11px;color:#aaa;flex-shrink:0}
+.fault-cond{
+  font-size:7.5px;color:#888;padding:2px 8px;background:#f8f9fa;
+  border:1px dashed #ccc;border-radius:10px;white-space:nowrap
+}
+
+/* ---- SiliconFlow Bridge ---- */
+.bridge-box{
+  margin-bottom:12px;border:1.5px solid #2980b9;border-radius:8px;
+  padding:12px 14px;position:relative;overflow:hidden;background:#fff
+}
+.bridge-box::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#2980b9,#85c1e9)}
+.bridge-box h3{font-size:11px;font-weight:700;margin:2px 0 8px;color:#1a5276;display:flex;align-items:center;gap:6px}
+.bridge-box h3 .tag{
+  display:inline-block;padding:1px 6px;border-radius:3px;font-size:7.5px;font-weight:600;
+  background:#eaf2fd;color:#1a5276;border:1px solid #aed6f1
+}
+.bridge-grid{display:grid;grid-template-columns:1fr 30px 1fr;gap:0;align-items:center}
+.bridge-panel{padding:8px 10px;border:1px solid #e8e8e8;border-radius:6px;background:#fafbfc}
+.bridge-panel h5{font-size:9px;font-weight:700;color:#2c3e50;margin-bottom:4px;text-align:center}
+.bridge-panel .code{
+  font-family:'Consolas','Monaco',monospace;font-size:7.5px;
+  background:#2c3e50;color:#ecf0f1;padding:6px 8px;border-radius:4px;
+  line-height:1.5;white-space:pre
+}
+.bridge-panel .code .k{color:#f39c12}
+.bridge-panel .code .c{color:#7f8c8d;font-style:italic}
+.bridge-panel .code .s{color:#2ecc71}
+.bridge-panel .note{font-size:7.5px;color:#888;margin-top:4px;text-align:center}
+.bridge-vs{display:flex;align-items:center;justify-content:center;font-size:11px;color:#2980b9;font-weight:700}
+
+/* ---- Metrics Bar ---- */
+.metrics{display:flex;gap:6px;justify-content:center;margin:12px 0}
+.m{
+  border:1px solid #ddd;border-radius:6px;padding:6px 14px;
+  text-align:center;background:#fafbfc;flex:1;max-width:150px
+}
+.m .val{font-size:15px;font-weight:700;color:#2c3e50;line-height:1.2}
+.m .lbl{font-size:7.5px;color:#888;margin-top:1px}
+
+/* ---- Difficulty Notes ---- */
+.difficulty{
+  padding:10px 14px;border:1px solid #d5d8dc;border-radius:6px;background:#fdfdfe
+}
+.difficulty h4{font-size:10px;font-weight:700;margin-bottom:6px;color:#2c3e50}
+.diff-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.diff-item{padding:6px 8px;border-radius:4px;border:1px solid #e8e8e8;background:#fff}
+.diff-item .q{font-size:8.5px;color:#c0392b;font-weight:600;margin-bottom:3px}
+.diff-item .a{font-size:8px;color:#555;line-height:1.5}
+.diff-item .a b{color:#1a1a2e}
+.diff-item .a code{background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;padding:0 2px;font-size:7px;font-family:'Consolas','Monaco',monospace;color:#c0392b}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- Title -->
+<div class="title">
+  <h2>Embedding 异步并发与容错架构</h2>
+  <div class="sub">Async Concurrent Embedding with Fault Tolerance · rag/service.py · _get_embeddings</div>
+</div>
+
+<!-- Problem Statement -->
+<div class="problem">
+  <div class="icon">⚠</div>
+  <div class="content">
+    <h4>核心挑战：大批量 chunk 的 Embedding 效率与可靠性</h4>
+    <p>单次 PDF 入库可产生 <b>940+ 个 chunk</b>，需要批量调用硅基流动 Embedding API。但 API 存在<b>速率限制</b>（并发请求数受限）和 <b>token 限制</b>（bge-large-zh 限制 512 tokens），而金融表格的 token 密度极高（大量数字和标点），<b>600 个中文字符可能已超过 512 token 限制</b>。串行调用 940 个 chunk 耗时不可接受，且任何一个批次失败都不应影响整体入库流程。</p>
+  </div>
+</div>
+
+<div class="narr-intro">针对上述挑战，我们在 <code>_get_embeddings()</code> 中设计了<b>三级容错的异步并发架构</b>：通过信号量控制 5 路并发加速批量请求，两级截断策略应对 token 超限，零向量填充保障批次间索引对齐。同时通过 <code>SiliconFlowEmbedding</code> 适配类解决 ChromaDB 同步接口与 async 服务之间的桥接问题。完整数据流如下：</div>
+
+<!-- ==================== Pipeline ==================== -->
+<div class="pipeline">
+  <h4>Embedding 批量处理数据流（以 940 chunks 为例）</h4>
+  <div class="pipe-flow">
+    <div class="pipe-node pn-input">940 chunks<div class="sub">来自 chunker.py<br>智能分块输出</div></div>
+    <span class="pipe-arrow">→</span>
+    <div class="pipe-node pn-trunc">一级截断<div class="sub">≤600 字符<br>保守预估 token</div></div>
+    <span class="pipe-arrow">→</span>
+    <div class="pipe-node pn-batch">拆分 30 批<div class="sub">batch_size=32<br>⌈940/32⌉ 批次</div></div>
+    <span class="pipe-arrow">→</span>
+    <div class="pipe-node pn-api">5 路并发请求<div class="sub">Semaphore(5)<br>asyncio.gather</div></div>
+    <span class="pipe-arrow">→</span>
+    <div class="pipe-node pn-merge">按序拼接<div class="sub">失败批次<br>零向量填充</div></div>
+    <span class="pipe-arrow">→</span>
+    <div class="pipe-node pn-store">ChromaDB<div class="sub">1024 维向量<br>cosine 空间</div></div>
+  </div>
+</div>
+
+<p class="narr">上述数据流中的每个关键环节分别对应三个核心设计：并发控制确保不触发 API 限流，二级截断容错处理 token 超限，零向量填充保障批次独立性。三者协同构成完整的容错体系：</p>
+
+<!-- ==================== Three Mechanisms ==================== -->
+<div class="arch-grid">
+  <div class="arch arch-1">
+    <div class="num">1</div>
+    <h3>并发控制<span class="en">Semaphore(5) + asyncio.gather</span></h3>
+    <div class="items">
+      <b>信号量</b>：<code>asyncio.Semaphore(5)</code> 限制最多 5 个并发请求<br>
+      <b>并发执行</b>：<code>asyncio.gather(*tasks)</code> 所有批次并行启动<br>
+      <b>批次大小</b>：<code>EMBEDDING_BATCH_SIZE=32</code>（每请求 32 条文本）<br>
+      <b>超时保护</b>：<code>httpx.AsyncClient(timeout=60s)</code><br>
+      <b>吞吐量</b>：940 chunks → ~30 批 → 5 路并发 → <b>6 轮</b>即可完成<br>
+      <b>加速比</b>：相比串行约 <b>5x 提速</b>
+    </div>
+  </div>
+
+  <div class="arch arch-2">
+    <div class="num">2</div>
+    <h3>二级截断容错<span class="en">600字符 → 400字符 降级</span></h3>
+    <div class="items">
+      <b>一级</b>：入口处所有文本截断到 <b>600 字符</b>（保守预估 ≈ 512 token）<br>
+      <b>触发二级</b>：API 返回 <code>413</code> 或 <code>20042</code>（token 超限）<br>
+      <b>二级</b>：该批次逐条截断到 <b>400 字符</b> 后重试<br>
+      <b>设计原因</b>：金融表格数字密度高，600 字符可能实际超 512 token<br>
+      <b>自动降级</b>：仅超限批次触发，其余批次不受影响<br>
+      <b>二次失败</b>：标记为 None → 零向量填充
+    </div>
+  </div>
+
+  <div class="arch arch-3">
+    <div class="num">3</div>
+    <h3>零向量填充<span class="en">批次独立 · 索引对齐</span></h3>
+    <div class="items">
+      <b>场景</b>：某批次两次重试均失败<br>
+      <b>策略</b>：用 <code>[0.0] × 1024</code> 零向量填充该批次所有位置<br>
+      <b>目的</b>：保持向量列表与 chunks 列表<b>索引一一对齐</b><br>
+      <b>影响</b>：零向量在 cosine 相似度中距离任何查询都远，<b>不会被检索命中</b><br>
+      <b>日志</b>：打印警告 "N 条使用零向量填充"<br>
+      <b>优势</b>：单批次失败不影响其余 900+ chunks 正常入库
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Fault Tolerance Flow ==================== -->
+<div class="fault-box">
+  <h3>容错决策流程 <span class="tag">_embed_batch() · 每批次独立容错</span></h3>
+  <div class="fault-flow">
+    <div class="fault-row">
+      <div class="fault-step fs-normal">API 请求<div class="sub">32 条 × ≤600 字符</div></div>
+      <span class="fault-arrow">→</span>
+      <div class="fault-cond">200 OK?</div>
+      <span class="fault-arrow">→</span>
+      <div class="fault-step fs-normal">✓ 成功<div class="sub">返回 32 个 1024维向量</div></div>
+    </div>
+    <div class="fault-row">
+      <div style="flex:1"></div>
+      <span class="fault-arrow" style="transform:rotate(90deg)">→</span>
+      <div class="fault-cond">413 / 20042?</div>
+      <span class="fault-arrow">→</span>
+      <div class="fault-step fs-retry">二级截断重试<div class="sub">逐条截断到 400 字符</div></div>
+      <span class="fault-arrow">→</span>
+      <div class="fault-cond">成功?</div>
+      <span class="fault-arrow">→</span>
+      <div class="fault-step fs-normal">✓ 降级成功</div>
+    </div>
+    <div class="fault-row">
+      <div style="flex:1"></div>
+      <div style="flex:1"></div>
+      <div style="flex:1"></div>
+      <div style="flex:1"></div>
+      <span class="fault-arrow" style="transform:rotate(90deg)">→</span>
+      <div class="fault-cond">仍失败</div>
+      <span class="fault-arrow">→</span>
+      <div class="fault-step fs-fallback">零向量填充<div class="sub">[0.0]×1024 · 索引对齐</div></div>
+    </div>
+  </div>
+</div>
+
+<p class="narr">除了批量 Embedding 本身的容错，还有一个关键工程问题需要解决：ChromaDB 的 <code>EmbeddingFunction.__call__</code> 是<b>同步接口</b>，但我们的 RAG 服务运行在 async 环境中。<code>SiliconFlowEmbedding</code> 适配类通过运行时环境检测实现了无缝桥接：</p>
+
+<!-- ==================== SiliconFlow Bridge ==================== -->
+<div class="bridge-box">
+  <h3>同步/异步桥接 <span class="tag">SiliconFlowEmbedding · ChromaDB 适配</span></h3>
+  <div class="bridge-grid">
+    <div class="bridge-panel">
+      <h5>异步环境（RAG 服务内）</h5>
+      <div class="code"><span class="k">def</span> __call__(self, input):
+    loop = asyncio.get_running_loop()
+    <span class="k">if</span> loop.is_running():
+        <span class="c"># 异步环境 → 线程池桥接</span>
+        <span class="k">with</span> ThreadPoolExecutor() <span class="k">as</span> pool:
+            future = pool.submit(
+                self._sync_embed, input
+            )
+            <span class="k">return</span> future.result(<span class="s">timeout=120</span>)</div>
+      <div class="note">线程池内启动新事件循环运行 async _get_embeddings()</div>
+    </div>
+
+    <div class="bridge-vs">⇄</div>
+
+    <div class="bridge-panel">
+      <h5>同步环境（测试 / CLI）</h5>
+      <div class="code"><span class="k">def</span> __call__(self, input):
+    loop = asyncio.get_running_loop()
+    <span class="c"># RuntimeError → 无事件循环</span>
+    <span class="k">except</span> RuntimeError:
+        pass
+
+    <span class="k">if not</span> loop:
+        <span class="c"># 同步环境 → 直接 asyncio.run</span>
+        <span class="k">return</span> asyncio.run(
+            self._async_embed(input)
+        )</div>
+      <div class="note">直接创建事件循环运行，无需线程池</div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Key Metrics ==================== -->
+<div class="metrics">
+  <div class="m"><div class="val">5</div><div class="lbl">并发请求数 (Semaphore)</div></div>
+  <div class="m"><div class="val">32</div><div class="lbl">每批次文本数</div></div>
+  <div class="m"><div class="val">600→400</div><div class="lbl">二级截断字符数</div></div>
+  <div class="m"><div class="val">1024</div><div class="lbl">向量维度 (BGE-large-zh)</div></div>
+  <div class="m"><div class="val">60s</div><div class="lbl">HTTP 请求超时</div></div>
+  <div class="m"><div class="val">~940</div><div class="lbl">417页年报 chunk 数</div></div>
+</div>
+
+<p class="narr">上述容错架构在实际运行中表现稳定，但仍有几个工程难点需要注意。以下是我们在开发和调优过程中遇到的三个关键问题及对应的解决方案：</p>
+
+<!-- ==================== Difficulty Notes ==================== -->
+<div class="difficulty">
+  <h4>⚙ 设计难点与解决思路</h4>
+  <div class="diff-grid">
+    <div class="diff-item">
+      <div class="q">❶ token 限制的不可预测性</div>
+      <div class="a">bge-large-zh 限制 512 token，但金融表格中<b>数字和标点的 token 密度</b>远高于普通文本（"130,456,789.00" 可能消耗 6+ token）。解法：保守截断到 600 字符（普通文本安全），超限时自动降级到 400 字符，<b>两级兜底</b>覆盖极端情况</div>
+    </div>
+    <div class="diff-item">
+      <div class="q">❷ 同步/异步环境的无缝切换</div>
+      <div class="a">ChromaDB 的 <code>EmbeddingFunction.__call__</code> 是同步接口，而 <code>_get_embeddings</code> 是 async。解法：运行时检测 <code>asyncio.get_running_loop()</code>，异步环境用<b>线程池+新事件循环</b>桥接，同步环境直接 <code>asyncio.run()</code></div>
+    </div>
+    <div class="diff-item">
+      <div class="q">❸ 批次失败的隔离性</div>
+      <div class="a">如果直接跳过失败批次，后续向量与 chunk 列表<b>索引错位</b>，ChromaDB 会将错误的向量匹配到错误的文本。解法：零向量填充保持<b>索引一一对齐</b>，零向量在 cosine 空间中与任何查询的相似度都极低，不会被误检索</div>
+    </div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

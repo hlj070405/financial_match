@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>系统架构图</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'SimSun','Microsoft YaHei',serif;background:#fff;color:#222;display:flex;justify-content:center;padding:20px}
+.wrap{width:820px}
+h2{text-align:center;font-size:14px;font-weight:bold;margin-bottom:12px;letter-spacing:2px}
+.grid{display:grid;grid-template-columns:36px 1fr 36px;gap:0}
+.vbar{writing-mode:vertical-rl;text-orientation:mixed;display:flex;align-items:center;justify-content:center;font-size:10px;letter-spacing:3px;border:1px solid #222;font-weight:bold;background:#f5f5f5}
+.vl{grid-column:1;grid-row:1/7}
+.vr{grid-column:3;grid-row:1/7}
+.mid{grid-column:2;padding:0 6px}
+.layer{border:1px solid #999;margin-bottom:4px;padding:8px 10px}
+.lt{font-size:10px;font-weight:bold;margin-bottom:6px;border-bottom:1px solid #ccc;padding-bottom:3px}
+.b{display:inline-block;border:1px solid #666;padding:3px 8px;margin:2px;font-size:9px;text-align:center;background:#fafafa}
+.bw{display:block;text-align:center;padding:5px;font-size:11px;font-weight:bold;border:1px solid #666;background:#f0f0f0}
+.mg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.mc{border:1px solid #aaa;padding:5px 6px}
+.mc h4{font-size:10px;font-weight:bold;margin-bottom:2px}
+.mc .f{font-size:8.5px;color:#555;line-height:1.5}
+.rr{display:flex;justify-content:center;gap:4px;flex-wrap:wrap}
+.sr{display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
+.ig{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.is{border:1px solid #aaa;padding:6px;text-align:center}
+.is h4{font-size:9px;font-weight:bold;margin-bottom:4px;border-bottom:1px solid #ddd;padding-bottom:2px}
+.ii{display:flex;gap:3px;flex-wrap:wrap;justify-content:center}
+.os{text-align:center;margin-top:4px;padding:4px;border:1px dashed #aaa;font-size:8.5px;color:#666}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h2>图1 系统总体架构图</h2>
+<div class="grid">
+
+<div class="vbar vl">标准数据导入导出接口</div>
+
+<div class="mid">
+
+<div class="layer">
+<div class="lt">终端层</div>
+<div class="bw">PC端（Web浏览器 · Vue 3 单页应用）</div>
+</div>
+
+<div class="layer">
+<div class="lt">用户层</div>
+<div class="rr">
+<span class="b">大众用户</span>
+<span class="b">高净值用户</span>
+<span class="b">专业投资者</span>
+<span class="b">中小企业</span>
+<span class="b">大型企业</span>
+</div>
+</div>
+
+<div class="layer">
+<div class="lt">业务层（9大功能模块 · 按角色动态组合）</div>
+<div class="mg">
+<div class="mc"><h4>智能咨询</h4><div class="f">多轮澄清 / 画像分析<br>渐进引导 / 专业直达</div></div>
+<div class="mc"><h4>推理可视化</h4><div class="f">决策链路展示<br>推理步骤日志</div></div>
+<div class="mc"><h4>财务诊断</h4><div class="f">基础解读 / 对标分析<br>风险预警评分</div></div>
+<div class="mc"><h4>舆情分析</h4><div class="f">热点追踪(8平台)<br>情绪指数 / 事件图谱</div></div>
+<div class="mc"><h4>行情终端</h4><div class="f">K线(日/周/月)<br>技术指标 / 资金流向</div></div>
+<div class="mc"><h4>一键研报</h4><div class="f">摘要报告 / 深度报告<br>自定义模板</div></div>
+<div class="mc"><h4>产业链分析</h4><div class="f">上下游关系图<br>供应链风险 / 竞争格局</div></div>
+<div class="mc"><h4>智能检索</h4><div class="f">语义搜索(RAG)<br>向量排序 / 噪声过滤</div></div>
+<div class="mc"><h4>数据源管理</h4><div class="f">文件上传解析<br>批量导入 / 多源接入</div></div>
+</div>
+</div>
+
+<div class="layer">
+<div class="lt">应用支撑层</div>
+<div class="sr">
+<span class="b">用户认证(JWT)</span>
+<span class="b">会话管理</span>
+<span class="b">角色权限控制</span>
+<span class="b">自选股管理</span>
+<span class="b">日志与监控</span>
+<span class="b">SSE流式推送</span>
+</div>
+</div>
+
+<div class="layer">
+<div class="lt">服务支撑层</div>
+<div class="ig">
+<div class="is">
+<h4>AI 大模型服务平台</h4>
+<div class="ii">
+<span class="b">Dify RAG引擎</span>
+<span class="b">Kimi k2.5 Agent</span>
+<span class="b">DeepSeek/Qwen</span>
+<span class="b">Embedding(3072维)</span>
+</div>
+</div>
+<div class="is">
+<h4>数据采集与处理平台</h4>
+<div class="ii">
+<span class="b">Tushare Pro</span>
+<span class="b">AKShare</span>
+<span class="b">热点新闻聚合</span>
+<span class="b">巨潮PDF下载</span>
+</div>
+</div>
+</div>
+</div>
+
+<div class="layer">
+<div class="lt">基础设施层</div>
+<div class="ig">
+<div class="is">
+<h4>硬件资源</h4>
+<div class="ii">
+<span class="b">云服务器</span>
+<span class="b">文件存储</span>
+</div>
+</div>
+<div class="is">
+<h4>软件资源</h4>
+<div class="ii">
+<span class="b">MySQL 8.0</span>
+<span class="b">Redis 7</span>
+<span class="b">FastAPI/Uvicorn</span>
+<span class="b">Nginx</span>
+<span class="b">Docker</span>
+</div>
+</div>
+</div>
+<div class="os">操作系统（Windows / Linux）</div>
+</div>
+
+</div>
+
+<div class="vbar vr">安全运维保障体系</div>
+
+</div>
+</div>
+</body>
+</html>

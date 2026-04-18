@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>金融PDF智能分块架构</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Microsoft YaHei','SimHei',sans-serif;background:#fff;color:#1a1a2e;display:flex;justify-content:center;padding:24px}
+.wrap{width:900px}
+
+/* ---- Title ---- */
+.title{text-align:center;margin-bottom:6px}
+.title h2{font-size:15px;font-weight:700;letter-spacing:3px;color:#1a1a2e}
+.title .sub{font-size:10px;color:#888;margin-top:2px;letter-spacing:1px}
+
+/* ---- Problem Banner ---- */
+.problem{
+  background:linear-gradient(135deg,#fff5f5,#fff0f0);
+  border:1px solid #e8c4c4;border-radius:6px;
+  padding:10px 14px;margin:10px 0 14px;display:flex;gap:10px;align-items:flex-start
+}
+.problem .icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.problem .content{flex:1}
+.problem .content h4{font-size:10.5px;color:#c0392b;margin-bottom:3px;font-weight:700}
+.problem .content p{font-size:9px;color:#666;line-height:1.6}
+.problem .content p b{color:#c0392b}
+
+/* ---- Dual Track Section ---- */
+.dual-track{
+  display:grid;grid-template-columns:1fr 40px 1fr;gap:0;
+  margin-bottom:12px;position:relative
+}
+.track{border:1.5px solid;border-radius:8px;padding:12px 14px;background:#fff;position:relative;overflow:hidden}
+.track::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.track-a{border-color:#8e44ad}
+.track-a::before{background:linear-gradient(90deg,#8e44ad,#c39bd3)}
+.track-b{border-color:#2c3e50}
+.track-b::before{background:linear-gradient(90deg,#2c3e50,#85929e)}
+.track h3{font-size:11px;font-weight:700;margin:2px 0 6px;display:flex;align-items:center;gap:6px}
+.track h3 .en{font-size:8px;color:#999;font-weight:400}
+.track h3 .badge{
+  display:inline-block;padding:1px 6px;border-radius:3px;font-size:7.5px;font-weight:600
+}
+.badge-a{background:#f4ecf7;color:#6c3483;border:1px solid #d2b4de}
+.badge-b{background:#ebedef;color:#2c3e50;border:1px solid #aeb6bf}
+.track .detail{font-size:8.5px;color:#444;line-height:1.7}
+.track .detail b{color:#1a1a2e}
+.track .detail code{
+  background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;
+  padding:0 3px;font-size:7.5px;font-family:'Consolas','Monaco',monospace;color:#c0392b
+}
+.track-divider{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-size:9px;color:#888;gap:4px
+}
+.track-divider .or-badge{
+  background:#f0f0f0;border:1px solid #ccc;border-radius:50%;
+  width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:9px;color:#666
+}
+.track-condition{
+  text-align:center;font-size:8px;color:#888;margin:-6px 0 10px;
+  padding:3px 12px;background:#f8f9fa;border:1px dashed #ccc;border-radius:4px;
+  display:inline-block;margin-left:50%;transform:translateX(-50%)
+}
+
+/* ---- Strategy Cards ---- */
+.strategies{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px}
+.strat{
+  border:1.5px solid;border-radius:8px;padding:12px 12px 10px;
+  position:relative;overflow:hidden;background:#fff
+}
+.strat::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+
+.strat-1{border-color:#e74c3c}
+.strat-1::before{background:linear-gradient(90deg,#e74c3c,#f1948a)}
+.strat-2{border-color:#f39c12}
+.strat-2::before{background:linear-gradient(90deg,#f39c12,#f7dc6f)}
+.strat-3{border-color:#3498db}
+.strat-3::before{background:linear-gradient(90deg,#3498db,#85c1e9)}
+
+.strat .num{
+  position:absolute;top:8px;right:10px;
+  width:24px;height:24px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:700;color:#fff;
+}
+.strat-1 .num{background:#e74c3c}
+.strat-2 .num{background:#f39c12}
+.strat-3 .num{background:#3498db}
+
+.strat h3{font-size:10.5px;font-weight:700;margin:2px 0 6px;padding-right:28px}
+.strat h3 .en{font-size:8px;color:#999;font-weight:400;display:block;margin-top:1px}
+.strat .items{font-size:8.5px;color:#444;line-height:1.7}
+.strat .items b{color:#1a1a2e}
+.strat .items code{
+  background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;
+  padding:0 3px;font-size:7.5px;font-family:'Consolas','Monaco',monospace;color:#c0392b
+}
+
+/* ---- Scoring Detail Box ---- */
+.scoring{
+  margin-bottom:12px;border:1.5px solid #e74c3c;border-radius:8px;
+  padding:12px 14px;position:relative;overflow:hidden;background:#fff
+}
+.scoring::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,#e74c3c,#f1948a)
+}
+.scoring h3{font-size:11px;font-weight:700;margin:2px 0 8px;color:#c0392b;display:flex;align-items:center;gap:6px}
+.scoring h3 .tag{
+  display:inline-block;padding:1px 6px;border-radius:3px;font-size:7.5px;font-weight:600;
+  background:#fdedec;color:#922b21;border:1px solid #f5b7b1
+}
+.score-table{width:100%;border-collapse:collapse;font-size:8.5px}
+.score-table th{
+  background:#c0392b;color:#fff;padding:4px 8px;
+  font-weight:600;text-align:center;font-size:8px
+}
+.score-table td{padding:4px 8px;border:1px solid #e0e0e0;text-align:center;line-height:1.4}
+.score-table tr:nth-child(even){background:#fdf2f2}
+.score-table .left{text-align:left}
+.score-plus{color:#27ae60;font-weight:700}
+.score-minus{color:#c0392b;font-weight:700}
+.score-table .example{color:#888;font-style:italic;font-size:7.5px}
+.score-result{
+  margin-top:8px;text-align:center;padding:5px;
+  background:#fdedec;border:1px solid #f5b7b1;border-radius:4px;
+  font-size:9px;color:#922b21;font-weight:600
+}
+
+/* ---- Flow Pipeline ---- */
+.pipeline{
+  margin-bottom:12px;padding:10px 12px;
+  border:1.5px solid #2c3e50;border-radius:8px;
+  background:linear-gradient(135deg,#fafbfc,#f0f3f5)
+}
+.pipeline h4{font-size:10px;font-weight:700;margin-bottom:8px;color:#2c3e50;text-align:center}
+.pipe-flow{display:flex;align-items:stretch;justify-content:center;gap:0}
+.pipe-node{
+  padding:6px 8px;border-radius:4px;font-size:8px;font-weight:600;
+  text-align:center;line-height:1.4;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;min-width:80px
+}
+.pipe-node .sub{font-size:7px;font-weight:400;color:#666;margin-top:1px}
+.pipe-arrow{display:flex;align-items:center;font-size:11px;color:#aaa;padding:0 2px}
+.pn-input{background:#eaf2fd;border:1px solid #aed6f1;color:#1a5276}
+.pn-parse{background:#f4ecf7;border:1px solid #d2b4de;color:#6c3483}
+.pn-chunk{background:#fdebd0;border:1px solid #f0b27a;color:#7e3f00}
+.pn-repair{background:#d5f5e3;border:1px solid #82e0aa;color:#145a32}
+.pn-embed{background:#fce4ec;border:1px solid #f1948a;color:#922b21}
+.pn-store{background:#e8eaf6;border:1px solid #9fa8da;color:#283593}
+
+/* Branch indicator */
+.pipe-branch{
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:0 4px;position:relative
+}
+.pipe-branch .branch-line{
+  width:1px;height:8px;background:#aaa
+}
+.pipe-branch-row{
+  display:flex;gap:4px;align-items:center
+}
+.pipe-branch-label{font-size:7px;color:#888;text-align:center}
+
+/* ---- Comparison Table ---- */
+.compare{margin-bottom:12px}
+.compare h4{font-size:10px;font-weight:700;margin-bottom:6px;color:#2c3e50;text-align:center}
+.ctable{width:100%;border-collapse:collapse;font-size:8.5px}
+.ctable th{
+  background:#2c3e50;color:#fff;padding:5px 8px;
+  font-weight:600;text-align:center;font-size:8px;letter-spacing:0.5px
+}
+.ctable td{padding:5px 8px;border:1px solid #ddd;text-align:center;line-height:1.5}
+.ctable tr:nth-child(even){background:#f8f9fa}
+.ctable .left{text-align:left}
+.ctable .highlight{background:#eafaf1;font-weight:600}
+.ctable .accent{color:#c0392b;font-weight:700}
+.ctable .good{color:#27ae60;font-weight:700}
+
+/* ---- Difficulty Notes ---- */
+.difficulty{
+  padding:10px 14px;
+  border:1px solid #d5d8dc;border-radius:6px;
+  background:#fdfdfe
+}
+.difficulty h4{font-size:10px;font-weight:700;margin-bottom:6px;color:#2c3e50}
+.diff-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.diff-item{padding:6px 8px;border-radius:4px;border:1px solid #e8e8e8;background:#fff}
+.diff-item .q{font-size:8.5px;color:#c0392b;font-weight:600;margin-bottom:3px}
+.diff-item .a{font-size:8px;color:#555;line-height:1.5}
+.diff-item .a b{color:#1a1a2e}
+
+/* ---- Metrics Bar ---- */
+.metrics{display:flex;gap:6px;justify-content:center;margin:12px 0}
+.m{
+  border:1px solid #ddd;border-radius:6px;padding:6px 14px;
+  text-align:center;background:#fafbfc;flex:1;max-width:140px
+}
+.m .val{font-size:15px;font-weight:700;color:#2c3e50;line-height:1.2}
+.m .lbl{font-size:7.5px;color:#888;margin-top:1px}
+
+/* ---- Narrative Connectors ---- */
+.narr{
+  font-size:9.5px;color:#444;line-height:1.7;margin:8px 0;
+  padding:0 2px;text-indent:2em
+}
+.narr b{color:#1a1a2e}
+.narr-intro{
+  font-size:9.5px;color:#444;line-height:1.7;margin:6px 0 10px;
+  padding:6px 12px;background:#f7f9fc;border-left:3px solid #8e44ad;border-radius:0 4px 4px 0
+}
+.narr-intro b{color:#1a1a2e}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- Title -->
+<div class="title">
+  <h2>金融PDF智能分块架构</h2>
+  <div class="sub">Financial PDF Intelligent Chunking · chunker.py + rag/service.py</div>
+</div>
+
+<!-- Problem Statement -->
+<div class="problem">
+  <div class="icon">⚠</div>
+  <div class="content">
+    <h4>核心挑战：财报 PDF 的结构复杂性导致传统分块质量极差</h4>
+    <p>财报 PDF 存在<b>表格跨页</b>（资产负债表常跨3-5页）、<b>章节嵌套</b>（"第五节 重要事项 → 一、主营业务 → (一)分行业"三级标题）、<b>扫描件混排</b>（文字页与图片页交替）等问题。传统固定字符切分（如512字符滑窗）会导致<b>表格被拦腰切断</b>、数字与描述分离（"营业收入"在上一个chunk，"130,456,789.00"在下一个chunk）、<b>上下文语义断裂</b>。</p>
+  </div>
+</div>
+
+<div class="narr-intro">针对上述问题，我们在 chunker.py 中设计了<b>三策略联合的智能分块方案</b>：章节标题感知切分、表格整体保留、跨页表格修复，三者协同工作以保障每个 chunk 的语义完整性。同时，在 PDF 解析层实现了<b>双轨自适应策略</b>，根据文件大小自动选择精度优先或效率优先的解析模式，如下所示：</div>
+
+<!-- ==================== Dual Track: PDF Parsing ==================== -->
+<div class="track-condition">策略切换条件：页数 ≤ 80 → Layout模式 ｜ 页数 > 80 → 快速模式（convert_pdf_to_markdown）</div>
+<div class="dual-track">
+  <div class="track track-a">
+    <h3>
+      Layout 结构化模式
+      <span class="en">pymupdf4llm · 小文件路径</span>
+      <span class="badge badge-a">≤ 80页</span>
+    </h3>
+    <div class="detail">
+      <b>解析引擎</b>：pymupdf4llm <code>Layout ON</code><br>
+      <b>输出格式</b>：结构化 Markdown（#/##/### 层级标题 + MD表格）<br>
+      <b>表格处理</b>：原生识别表格边界，输出 <code>| col1 | col2 |</code> 格式<br>
+      <b>优势</b>：章节层级完整保留，表格结构精确<br>
+      <b>代价</b>：417页财报耗时 ~100s（CPU密集型）<br>
+      <b>分块器</b>：<code>MarkdownHeaderTextSplitter</code> 按 #/##/### 拆分
+    </div>
+  </div>
+
+  <div class="track-divider">
+    <div style="width:1px;height:20px;background:#ccc"></div>
+    <div class="or-badge">OR</div>
+    <div style="width:1px;height:20px;background:#ccc"></div>
+  </div>
+
+  <div class="track track-b">
+    <h3>
+      快速文本+表格模式
+      <span class="en">PyMuPDF text + pdfplumber tables · 大文件路径</span>
+      <span class="badge badge-b">> 80页</span>
+    </h3>
+    <div class="detail">
+      <b>文本引擎</b>：PyMuPDF <code>page.get_text("text")</code> 逐页提取<br>
+      <b>表格引擎</b>：pdfplumber 前 <code>30</code> 页表格提取（避免超时）<br>
+      <b>输出格式</b>：<code>## 第N页</code> 分隔的纯文本 + 附录表格区<br>
+      <b>优势</b>：417页财报仅 ~10s，速度提升 <b>10倍</b><br>
+      <b>代价</b>：丢失标题层级，表格仅覆盖前30页<br>
+      <b>分块器</b>：<code>_split_into_sections</code> 章节识别 + 固定兜底
+    </div>
+  </div>
+</div>
+
+<p class="narr">完成 PDF 解析后，系统将提取到的文本送入智能分块引擎。针对金融财报的特殊结构，我们设计了三种互补的切分策略，在 auto 模式下自动协同工作：</p>
+
+<!-- ==================== Three Strategies ==================== -->
+<div class="strategies">
+  <!-- Strategy 1: Section-aware -->
+  <div class="strat strat-1">
+    <div class="num">1</div>
+    <h3>章节标题感知切分<span class="en">Section-Aware Splitting</span></h3>
+    <div class="items">
+      <b>核心函数</b>：<code>_score_section_title()</code><br>
+      <b>原理</b>：对每行文本<b>多维评分</b>，≥3分判定为标题行<br>
+      <b>标题边界</b>：按标题行切分为逻辑段落<br>
+      <b>超长兜底</b>：段内超过 <code>512</code> 字符 → <code>RecursiveCharacterTextSplitter</code> 二次切分<br>
+      <b>分隔符优先级</b>：<code>\n\n</code> > <code>\n</code> > <code>。</code> > <code>；</code> > 空格<br>
+      <b>上下文注入</b>：每 chunk 头部追加 <code>当前章节：{title}</code>
+    </div>
+  </div>
+
+  <!-- Strategy 2: Table preservation -->
+  <div class="strat strat-2">
+    <div class="num">2</div>
+    <h3>表格整体保留<span class="en">Table Preservation</span></h3>
+    <div class="items">
+      <b>检测方式</b>：<code>is_table</code> 标记 或 MD 表格语法 <code>|-|</code><br>
+      <b>保留规则</b>：表格内容<b>不拆分</b>，整体作为单个 chunk<br>
+      <b>超长截断</b>：超过 <code>chunk_size × 4</code>（2048字符）时截断并标注<br>
+      <b>表格判定</b>：行内含 <code>≥3</code> 个纯数字 token 或 <code>|</code>/<code>\t</code> 分隔符<br>
+      <b>数字密度</b>：数字字符占比 &gt;50% 的行视为数据行<br>
+      <b>元数据标注</b>：<code>is_table: True</code> + <code>section_title: "表格数据"</code>
+    </div>
+  </div>
+
+  <!-- Strategy 3: Cross-page repair -->
+  <div class="strat strat-3">
+    <div class="num">3</div>
+    <h3>跨页表格修复<span class="en">Cross-Page Table Repair</span></h3>
+    <div class="items">
+      <b>核心函数</b>：<code>_repair_table_headers_across_pages()</code><br>
+      <b>问题场景</b>：<code>## 第N页</code> 将表头和数据体分到不同 section<br>
+      <b>表头检测</b>：页末短行（≤40字）含"<b>项目</b>/<b>年</b>/<b>季度</b>/<b>期末</b>"等<b>9个标记词</b><br>
+      <b>数据验证</b>：下页开头存在 <code>≥2</code> 行数字密集行时才执行修复<br>
+      <b>修复动作</b>：复制表头行到下一页开头，保持表格可读性<br>
+      <b>防误判</b>：表头候选 ≥2 行 + 数字占比 ≤50% 双重校验
+    </div>
+  </div>
+</div>
+
+<p class="narr">其中，策略一的<b>章节标题识别</b>是整个分块质量的关键 — 如何在金融文档中准确区分"标题行"和"数据行"？我们设计了一套多维评分机制，通过正向加分与负向惩罚的组合来可靠判定：</p>
+
+<!-- ==================== Scoring Detail ==================== -->
+<div class="scoring">
+  <h3>标题评分机制详解 <span class="tag">_score_section_title() · 阈值 ≥ 3分</span></h3>
+  <table class="score-table">
+    <tr>
+      <th style="width:200px">评分规则</th>
+      <th style="width:60px">分值</th>
+      <th>说明</th>
+      <th style="width:200px">示例</th>
+    </tr>
+    <tr>
+      <td class="left">编号前缀（"1." / "第一节" / "(一)"）</td>
+      <td class="score-plus">+3</td>
+      <td class="left">检测数字编号、中文序号、括号序号三种格式</td>
+      <td class="example">"1. 营业收入" → +3</td>
+    </tr>
+    <tr>
+      <td class="left">短行（长度 ≤ 20字符）</td>
+      <td class="score-plus">+2</td>
+      <td class="left">标题通常较短；21-32字 +1分</td>
+      <td class="example">"主营业务分析" (7字) → +2</td>
+    </tr>
+    <tr>
+      <td class="left">标点符号少（≤1个标点）</td>
+      <td class="score-plus">+1</td>
+      <td class="left">标题极少包含逗号、句号等正文标点</td>
+      <td class="example">"财务报表附注" → +1</td>
+    </tr>
+    <tr>
+      <td class="left">下一行更长（长度差 &gt;10字）</td>
+      <td class="score-plus">+1</td>
+      <td class="left">标题后通常跟随较长的正文段落</td>
+      <td class="example">下一行 50字 vs 当前 12字 → +1</td>
+    </tr>
+    <tr>
+      <td class="left">以句号/逗号/分号结尾</td>
+      <td class="score-minus">-2</td>
+      <td class="left">强负信号：标题几乎不以标点结尾</td>
+      <td class="example">"报告期内主要经营如下。" → -2</td>
+    </tr>
+    <tr>
+      <td class="left">数字占比超过 35%</td>
+      <td class="score-minus">-2</td>
+      <td class="left">过滤数据行（如 "130,456,789.00 元"）</td>
+      <td class="example">"营业收入 130,456,789.00" → -2</td>
+    </tr>
+    <tr>
+      <td class="left">看起来像表格行（≥3个数字 token）</td>
+      <td class="score-minus">-3</td>
+      <td class="left">最强负信号：表格数据行绝不是标题</td>
+      <td class="example">"工商银行 | 8,567 | 12.3%" → -3</td>
+    </tr>
+  </table>
+  <div class="score-result">
+    判定阈值：总分 ≥ 3 → 标题行 ｜ 前置过滤：长度 &gt;40字 / 纯数字 / 无汉字字母 → 直接排除（-10分）
+  </div>
+</div>
+
+<p class="narr">以上三策略在实际运行中按序协作。以一份 417 页的平安银行年报为例，完整的分块流程如下：</p>
+
+<!-- ==================== Pipeline ==================== -->
+<div class="pipeline">
+  <h4>端到端分块数据流（以417页平安银行年报为例）</h4>
+  <div class="pipe-flow">
+    <div class="pipe-node pn-input">PDF 文件<div class="sub">417页 · 平安银行年报</div></div>
+    <span class="pipe-arrow">→</span>
+    <div class="pipe-node pn-parse">策略判定<div class="sub">&gt;80页 → 快速模式</div></div>
+    <span class="pipe-arrow">→</span>
+    <div class="pipe-node pn-parse">PyMuPDF 提取<div class="sub">逐页文本 ~10s</div></div>
+    <span class="pipe-arrow">→</span>
+    <div class="pipe-node pn-repair">跨页表头修复<div class="sub">_repair_table_headers</div></div>
+    <span class="pipe-arrow">→</span>
+    <div class="pipe-node pn-chunk">三策略分块<div class="sub">章节+表格+兜底</div></div>
+    <span class="pipe-arrow">→</span>
+    <div class="pipe-node pn-chunk">上下文注入<div class="sub">章节标题头部</div></div>
+    <span class="pipe-arrow">→</span>
+    <div class="pipe-node pn-embed">Embedding<div class="sub">BGE-large-zh 1024维</div></div>
+    <span class="pipe-arrow">→</span>
+    <div class="pipe-node pn-store">ChromaDB<div class="sub">~940 chunks 入库</div></div>
+  </div>
+</div>
+
+<p class="narr">为直观展示智能分块相比传统方案的改进，下表从表格处理、章节边界、跨页修复等六个维度进行对比：</p>
+
+<!-- ==================== Comparison Table ==================== -->
+<div class="compare">
+  <h4>智能分块 vs 传统固定分块 对比</h4>
+  <table class="ctable">
+    <tr>
+      <th style="width:100px">对比维度</th>
+      <th>传统固定分块（512字符滑窗）</th>
+      <th>本系统智能分块（三策略联合）</th>
+    </tr>
+    <tr>
+      <td><b>表格处理</b></td>
+      <td>表格被切断，"项目"和"数值"分属不同chunk</td>
+      <td class="highlight left">表格整体保留（<code>is_table</code>），超长截断到 2048字符</td>
+    </tr>
+    <tr>
+      <td><b>章节边界</b></td>
+      <td>无感知，可能从段落中间截断</td>
+      <td class="highlight left">标题评分自动识别边界，按逻辑段落切分</td>
+    </tr>
+    <tr>
+      <td><b>跨页问题</b></td>
+      <td>表头丢失，下页数据无法理解</td>
+      <td class="highlight left">自动检测并复制表头到下一页</td>
+    </tr>
+    <tr>
+      <td><b>上下文</b></td>
+      <td>chunk 独立，无法知道属于哪个章节</td>
+      <td class="highlight left">每 chunk 注入 <code>当前章节：{title}</code> 头部</td>
+    </tr>
+    <tr>
+      <td><b>解析策略</b></td>
+      <td>单一策略，不区分文件大小</td>
+      <td class="highlight left">双轨自适应：Layout（精度优先）/ 快速（效率优先）</td>
+    </tr>
+    <tr>
+      <td><b>检索精度</b></td>
+      <td>语义碎片化，向量相似度被噪声稀释</td>
+      <td class="highlight left">语义完整 chunk → Embedding 质量更高 → <span class="good">检索更准</span></td>
+    </tr>
+  </table>
+</div>
+
+<!-- ==================== Key Metrics ==================== -->
+<div class="metrics">
+  <div class="m"><div class="val">512 / 64</div><div class="lbl">chunk_size / overlap（字符）</div></div>
+  <div class="m"><div class="val">≥ 3分</div><div class="lbl">标题判定阈值</div></div>
+  <div class="m"><div class="val">80页</div><div class="lbl">解析策略切换阈值</div></div>
+  <div class="m"><div class="val">× 4</div><div class="lbl">表格最大允许倍数</div></div>
+  <div class="m"><div class="val">9个</div><div class="lbl">表头标记词数量</div></div>
+  <div class="m"><div class="val">~940</div><div class="lbl">417页年报分块数</div></div>
+</div>
+
+<p class="narr">在实际工程中，上述方案的难点主要集中在启发式规则的边界情况处理上。以下是我们遇到的三个关键挑战及对应的解决思路：</p>
+
+<!-- ==================== Difficulty Notes ==================== -->
+<div class="difficulty">
+  <h4>⚙ 设计难点与解决思路</h4>
+  <div class="diff-grid">
+    <div class="diff-item">
+      <div class="q">❶ 标题 vs 数据行的模糊边界</div>
+      <div class="a">金融文档中"<b>1. 营业收入 130,456,789.00</b>"既像标题又像数据行。解法：<b>数字占比惩罚</b>（&gt;35%扣2分）+ <b>表格行检测</b>（≥3个纯数字token扣3分），多维评分互相校正</div>
+    </div>
+    <div class="diff-item">
+      <div class="q">❷ 跨页修复的误判控制</div>
+      <div class="a">非表格的短行也可能被误判为表头。解法：<b>双重验证</b> — 上页末尾需含 ≥2 行候选 + 9个标记词命中，下页开头需有 ≥2 行数字密集数据行，才执行修复</div>
+    </div>
+    <div class="diff-item">
+      <div class="q">❸ 大小文件策略平衡</div>
+      <div class="a">Layout模式精度高但<b>417页需~100s</b>，纯文本仅~10s但丢结构。解法：<b>80页阈值</b>自适应切换 + pdfplumber 补充前30页关键表格，兼顾精度与效率</div>
+    </div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

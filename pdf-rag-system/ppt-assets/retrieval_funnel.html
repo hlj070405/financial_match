@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>三阶段漏斗检索架构</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Microsoft YaHei','SimHei',sans-serif;background:#fff;color:#1a1a2e;display:flex;justify-content:center;padding:24px}
+.wrap{width:900px}
+
+/* ---- Title ---- */
+.title{text-align:center;margin-bottom:6px}
+.title h2{font-size:15px;font-weight:700;letter-spacing:3px;color:#1a1a2e}
+.title .sub{font-size:10px;color:#888;margin-top:2px;letter-spacing:1px}
+
+/* ---- Problem Banner ---- */
+.problem{
+  background:linear-gradient(135deg,#fff5f5,#fff0f0);
+  border:1px solid #e8c4c4;border-radius:6px;
+  padding:10px 14px;margin:10px 0 14px;display:flex;gap:10px;align-items:flex-start
+}
+.problem .icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.problem .content{flex:1}
+.problem .content h4{font-size:10.5px;color:#c0392b;margin-bottom:3px;font-weight:700}
+.problem .content p{font-size:9px;color:#666;line-height:1.6}
+.problem .content p b{color:#c0392b}
+
+/* ---- Funnel Container ---- */
+.funnel{position:relative;display:flex;flex-direction:column;gap:0}
+
+/* ---- Stage Row ---- */
+.stage{
+  display:grid;grid-template-columns:110px 1fr 170px;
+  gap:0;position:relative;
+}
+.stage-num{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:10px 8px;position:relative;
+}
+.stage-num .circle{
+  width:42px;height:42px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:700;color:#fff;
+  box-shadow:0 2px 8px rgba(0,0,0,.15);position:relative;z-index:2
+}
+.stage-num .label{font-size:8px;color:#888;margin-top:4px;text-align:center;white-space:nowrap}
+
+/* Vertical connector line */
+.stage-num::after{
+  content:'';position:absolute;left:50%;bottom:-2px;
+  width:2px;height:20px;background:#ccc;transform:translateX(-50%);z-index:1
+}
+.stage:last-child .stage-num::after{display:none}
+
+.stage-body{
+  border:1.5px solid;border-radius:8px;
+  padding:12px 14px;position:relative;overflow:hidden;
+  background:#fff;
+}
+.stage-body::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+}
+
+/* Stage color themes */
+.s1 .circle{background:linear-gradient(135deg,#3498db,#2980b9)}
+.s1 .stage-body{border-color:#3498db}
+.s1 .stage-body::before{background:linear-gradient(90deg,#3498db,#85c1e9)}
+.s1 .tag{background:#eaf2fd;color:#2471a3;border:1px solid #aed6f1}
+
+.s2 .circle{background:linear-gradient(135deg,#e67e22,#d35400)}
+.s2 .stage-body{border-color:#e67e22}
+.s2 .stage-body::before{background:linear-gradient(90deg,#e67e22,#f0b27a)}
+.s2 .tag{background:#fef5e7;color:#b7590a;border:1px solid #f5cba7}
+
+.s3 .circle{background:linear-gradient(135deg,#27ae60,#1e8449)}
+.s3 .stage-body{border-color:#27ae60}
+.s3 .stage-body::before{background:linear-gradient(90deg,#27ae60,#82e0aa)}
+.s3 .tag{background:#eafaf1;color:#1a7a42;border:1px solid #a9dfbf}
+
+.stage-body h3{font-size:11px;font-weight:700;margin:2px 0 6px;display:flex;align-items:center;gap:6px}
+.stage-body h3 .en{font-size:8.5px;color:#999;font-weight:400}
+.tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:7.5px;font-weight:600}
+
+/* Two-col detail layout */
+.detail{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
+.detail-item{display:flex;gap:4px;font-size:8.5px;line-height:1.5}
+.detail-item .dt{color:#888;white-space:nowrap;flex-shrink:0;min-width:42px}
+.detail-item .dd{color:#333}
+.detail-item .dd b{color:#1a1a2e}
+.detail-item .dd code{
+  background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;
+  padding:0 3px;font-size:7.5px;font-family:'Consolas','Monaco',monospace;color:#c0392b
+}
+
+/* Side metric panel */
+.side-metric{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:8px 6px;gap:6px
+}
+.metric-box{
+  text-align:center;border:1px solid #ddd;border-radius:6px;
+  padding:6px 8px;width:100%;background:#fafbfc
+}
+.metric-box .val{font-size:16px;font-weight:700;line-height:1.2}
+.metric-box .lbl{font-size:7.5px;color:#888;margin-top:1px}
+.s1 .metric-box .val{color:#2980b9}
+.s2 .metric-box .val{color:#d35400}
+.s3 .metric-box .val{color:#1e8449}
+
+/* Arrow between stages */
+.arrow-row{
+  display:flex;align-items:center;justify-content:center;
+  padding:2px 0;position:relative;
+}
+.arrow-row .funnel-bar{
+  display:flex;align-items:center;gap:6px;
+  padding:3px 14px;
+  background:#f8f9fa;border:1px dashed #ccc;border-radius:12px;
+  font-size:8px;color:#888;
+}
+.arrow-row .funnel-bar .num{font-weight:700;font-size:10px}
+.arrow-row .a-icon{font-size:14px;color:#aaa}
+
+/* ---- Bottom: Flow Summary ---- */
+.flow-summary{
+  margin-top:14px;padding:10px 12px;
+  border:1.5px solid #2c3e50;border-radius:8px;
+  background:linear-gradient(135deg,#fafbfc,#f0f3f5)
+}
+.flow-summary h4{font-size:10px;font-weight:700;margin-bottom:6px;color:#2c3e50;text-align:center}
+.flow-chain{display:flex;align-items:center;justify-content:center;gap:0;flex-wrap:wrap}
+.flow-node{
+  padding:5px 10px;border-radius:4px;font-size:8px;font-weight:600;
+  text-align:center;line-height:1.4;white-space:nowrap
+}
+.flow-node.user{background:#eaf2fd;border:1px solid #aed6f1;color:#2471a3}
+.flow-node.s1n{background:#d6eaf8;border:1px solid #85c1e9;color:#1a5276}
+.flow-node.s2n{background:#fdebd0;border:1px solid #f0b27a;color:#7e3f00}
+.flow-node.s3n{background:#d5f5e3;border:1px solid #82e0aa;color:#145a32}
+.flow-node.result{background:#f9ebea;border:1px solid #f1948a;color:#922b21}
+.flow-arrow{font-size:11px;color:#aaa;padding:0 3px}
+
+/* ---- Tech Comparison Table ---- */
+.compare{margin-top:12px}
+.compare h4{font-size:10px;font-weight:700;margin-bottom:6px;color:#2c3e50;text-align:center}
+.ctable{width:100%;border-collapse:collapse;font-size:8.5px}
+.ctable th{
+  background:#2c3e50;color:#fff;padding:5px 8px;
+  font-weight:600;text-align:center;font-size:8px;letter-spacing:0.5px
+}
+.ctable td{padding:5px 8px;border:1px solid #ddd;text-align:center;line-height:1.5}
+.ctable tr:nth-child(even){background:#f8f9fa}
+.ctable .left{text-align:left}
+.ctable .highlight{background:#eafaf1;font-weight:600}
+.ctable .accent{color:#c0392b;font-weight:700}
+
+/* ---- Difficulty Notes ---- */
+.difficulty{
+  margin-top:12px;padding:10px 14px;
+  border:1px solid #d5d8dc;border-radius:6px;
+  background:#fdfdfe
+}
+.difficulty h4{font-size:10px;font-weight:700;margin-bottom:6px;color:#2c3e50;display:flex;align-items:center;gap:4px}
+.diff-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.diff-item{padding:6px 8px;border-radius:4px;border:1px solid #e8e8e8;background:#fff}
+.diff-item .q{font-size:8.5px;color:#c0392b;font-weight:600;margin-bottom:3px}
+.diff-item .a{font-size:8px;color:#555;line-height:1.5}
+.diff-item .a b{color:#1a1a2e}
+
+/* ---- Narrative Connectors ---- */
+.narr{
+  font-size:9.5px;color:#444;line-height:1.7;margin:8px 0;
+  padding:0 2px;text-indent:2em
+}
+.narr b{color:#1a1a2e}
+.narr-intro{
+  font-size:9.5px;color:#444;line-height:1.7;margin:6px 0 10px;
+  padding:6px 12px;background:#f7f9fc;border-left:3px solid #3498db;border-radius:0 4px 4px 0
+}
+.narr-intro b{color:#1a1a2e}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- Title -->
+<div class="title">
+  <h2>三阶段递进式检索漏斗架构</h2>
+  <div class="sub">Three-Stage Progressive Retrieval Funnel · query_router.py + rag/service.py</div>
+</div>
+
+<!-- Problem Statement -->
+<div class="problem">
+  <div class="icon">⚠</div>
+  <div class="content">
+    <h4>核心挑战：金融财报领域的实体混淆问题</h4>
+    <p>用户问"<b>工商银行2024年营收</b>"，纯向量检索可能返回<b>招商银行</b>或<b>建设银行</b>的数据 —— 银行类财报语义高度相似（余弦相似度 &gt;0.85），仅靠 Embedding 无法区分实体边界。传统方案要么牺牲召回率（硬过滤），要么引入大量噪声（纯向量）。</p>
+  </div>
+</div>
+
+<div class="narr-intro">针对上述挑战，我们在检索链路中设计了<b>三阶段递进式漏斗架构</b>：先通过意图解析锁定文档范围，再用 BM25 混合重排补充关键词精确匹配能力，最后由 Cross-Encoder 精排模型做最终相关性判定。三阶段逐层收窄候选池，在<b>不牺牲召回率的前提下大幅提升精确率</b>。具体架构如下：</div>
+
+<!-- ==================== Stage 1 ==================== -->
+<div class="funnel">
+<div class="stage s1">
+  <div class="stage-num">
+    <div class="circle">S1</div>
+    <div class="label">粗筛层</div>
+  </div>
+  <div class="stage-body">
+    <h3>
+      意图解析 + 元数据过滤
+      <span class="en">Intent Parsing & Metadata Filtering</span>
+      <span class="tag">parse_intent() + build_where_filter()</span>
+    </h3>
+    <div class="detail">
+      <div class="detail-item">
+        <span class="dt">输入：</span>
+        <span class="dd">用户自然语言 query（如"<b>宁德时代2024三季报营收</b>"）</span>
+      </div>
+      <div class="detail-item">
+        <span class="dt">公司识别：</span>
+        <span class="dd"><b>别名词典</b>（工行→工商银行、茅台→贵州茅台等）+ <b>6位股票代码</b>正则匹配</span>
+      </div>
+      <div class="detail-item">
+        <span class="dt">时间解析：</span>
+        <span class="dd">年份<code>20\d{2}</code> + 季度映射（一季报→Q1、半年报→H1、年报→Q4）</span>
+      </div>
+      <div class="detail-item">
+        <span class="dt">过滤构建：</span>
+        <span class="dd">匹配 ChromaDB <code>source</code> 字段 → 生成 <code>{"source": {"$in": [...]}}</code> where 条件</span>
+      </div>
+      <div class="detail-item">
+        <span class="dt">优先级：</span>
+        <span class="dd"><b>显式 document_id</b> &gt; 意图匹配 source &gt; 全库检索（无意图时降级）</span>
+      </div>
+      <div class="detail-item">
+        <span class="dt">技术亮点：</span>
+        <span class="dd"><b>零外部依赖</b>，纯正则+字典，延迟 &lt;1ms，无 LLM 调用开销</span>
+      </div>
+    </div>
+  </div>
+  <div class="side-metric">
+    <div class="metric-box"><div class="val">~100</div><div class="lbl">向量库候选（n_results）</div></div>
+    <div class="metric-box"><div class="val">&lt;1ms</div><div class="lbl">解析延迟</div></div>
+  </div>
+</div>
+
+<p class="narr">S1 完成后，系统已将检索范围从全库缩小到目标文档。接下来通过向量检索获取语义相关的候选块，并进入第二阶段进行混合重排：</p>
+<!-- Arrow 1→2 -->
+<div class="arrow-row">
+  <span class="a-icon">↓</span>
+  <div class="funnel-bar">
+    <span>向量检索 + 阈值过滤（score ≥ 0.55）</span>
+    <span class="a-icon">→</span>
+    <span>候选池 <span class="num">~20-40</span> 条</span>
+  </div>
+  <span class="a-icon">↓</span>
+</div>
+
+<!-- ==================== Stage 2 ==================== -->
+<div class="stage s2">
+  <div class="stage-num">
+    <div class="circle">S2</div>
+    <div class="label">混排层</div>
+  </div>
+  <div class="stage-body">
+    <h3>
+      BM25 混合重排
+      <span class="en">Hybrid Reranking with RRF Fusion</span>
+      <span class="tag">hybrid_rerank()</span>
+    </h3>
+    <div class="detail">
+      <div class="detail-item">
+        <span class="dt">向量路：</span>
+        <span class="dd"><b>BGE-large-zh-v1.5</b> 余弦相似度，捕捉<b>语义近似</b>（"营业收入"≈"总收入"）</span>
+      </div>
+      <div class="detail-item">
+        <span class="dt">BM25路：</span>
+        <span class="dd"><b>自研轻量 BM25</b>（k1=1.5, b=0.75），<b>逐字分词</b>+英文token，捕捉<b>精确关键词</b></span>
+      </div>
+      <div class="detail-item">
+        <span class="dt">融合算法：</span>
+        <span class="dd"><b>RRF</b>（Reciprocal Rank Fusion）: score = 0.6/(k+rank_vec) + 0.4/(k+rank_bm25), k=60</span>
+      </div>
+      <div class="detail-item">
+        <span class="dt">归一化：</span>
+        <span class="dd">BM25 分数归一化至 [0,1]，向量分本身为余弦相似度 [0,1]</span>
+      </div>
+      <div class="detail-item">
+        <span class="dt">权重分配：</span>
+        <span class="dd">向量权重 <code>0.6</code> : BM25 权重 <code>0.4</code>（金融语料实验调优值）</span>
+      </div>
+      <div class="detail-item">
+        <span class="dt">技术亮点：</span>
+        <span class="dd"><b>零外部依赖</b>的 BM25 实现，无需 Elasticsearch，轻量嵌入后端</span>
+      </div>
+    </div>
+  </div>
+  <div class="side-metric">
+    <div class="metric-box"><div class="val">0.6:0.4</div><div class="lbl">向量:BM25 权重</div></div>
+    <div class="metric-box"><div class="val">RRF</div><div class="lbl">k=60 融合策略</div></div>
+  </div>
+</div>
+
+<p class="narr">经过 RRF 融合，语义相近但关键词不匹配的噪声被有效压低，同时精确包含目标实体的文档排名上升。在此基础上，第三阶段引入 Cross-Encoder 做最终精排：</p>
+<!-- Arrow 2→3 -->
+<div class="arrow-row">
+  <span class="a-icon">↓</span>
+  <div class="funnel-bar">
+    <span>混合排序后传入精排</span>
+    <span class="a-icon">→</span>
+    <span>候选池 <span class="num">~20-40</span> 条</span>
+  </div>
+  <span class="a-icon">↓</span>
+</div>
+
+<!-- ==================== Stage 3 ==================== -->
+<div class="stage s3">
+  <div class="stage-num">
+    <div class="circle">S3</div>
+    <div class="label">精排层</div>
+  </div>
+  <div class="stage-body">
+    <h3>
+      BGE-Reranker 精排 + 断路器
+      <span class="en">Cross-Encoder Reranking & Circuit Breaker</span>
+      <span class="tag">bge_rerank()</span>
+    </h3>
+    <div class="detail">
+      <div class="detail-item">
+        <span class="dt">模型：</span>
+        <span class="dd"><b>BAAI/bge-reranker-v2-m3</b>（Cross-Encoder 架构，硅基流动 API 托管）</span>
+      </div>
+      <div class="detail-item">
+        <span class="dt">原理：</span>
+        <span class="dd">将 <b>query + document</b> 拼接后整体输入，注意力机制<b>同时感知</b>两者的交互关系</span>
+      </div>
+      <div class="detail-item">
+        <span class="dt">断路器：</span>
+        <span class="dd">最高 relevance_score &lt; <code>0.6</code> → 触发断路，标记 <code>is_relevant=False</code></span>
+      </div>
+      <div class="detail-item">
+        <span class="dt">降级策略：</span>
+        <span class="dd">API 超时/Key缺失时<b>自动降级</b>为 S2 排序结果，保障服务可用性</span>
+      </div>
+      <div class="detail-item">
+        <span class="dt">输出控制：</span>
+        <span class="dd">按 rerank_score 降序 → 截取 <b>Top-K</b>（默认5条）返回给 LLM 生成层</span>
+      </div>
+      <div class="detail-item">
+        <span class="dt">技术亮点：</span>
+        <span class="dd"><b>精准判断 query-document 相关性</b>，比 Bi-Encoder（向量）精度提升 15-30%</span>
+      </div>
+    </div>
+  </div>
+  <div class="side-metric">
+    <div class="metric-box"><div class="val">0.6</div><div class="lbl">断路器阈值</div></div>
+    <div class="metric-box"><div class="val">Top-5</div><div class="lbl">最终输出条数</div></div>
+  </div>
+</div>
+</div>
+
+<p class="narr">经过三阶段漏斗，系统从 ~100 条初始候选中精确筛选出 Top-5 高相关文档块。若最高精排分仍低于断路器阈值，则判定知识库中无相关内容，避免 LLM 基于噪声上下文产生幻觉。完整的端到端数据流如下：</p>
+<!-- ==================== Flow Chain ==================== -->
+<div class="flow-summary">
+  <h4>端到端检索数据流</h4>
+  <div class="flow-chain">
+    <div class="flow-node user">用户提问<br><span style="font-size:7px;font-weight:400">"工行2024年营收"</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node s1n">意图解析<br><span style="font-size:7px;font-weight:400">公司=工商银行, 年份=2024</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node s1n">元数据过滤<br><span style="font-size:7px;font-weight:400">where: source $in [...]</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node s1n">向量检索<br><span style="font-size:7px;font-weight:400">ChromaDB Top-100</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node s2n">BM25 + RRF<br><span style="font-size:7px;font-weight:400">混合重排 0.6:0.4</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node s3n">Cross-Encoder<br><span style="font-size:7px;font-weight:400">BGE-Reranker精排</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-node result">Top-5 Context<br><span style="font-size:7px;font-weight:400">→ LLM 生成回答</span></div>
+  </div>
+</div>
+
+<p class="narr">为便于直观对比三个阶段的技术选型与性能特征，下表从核心模块、检索方式、延迟、外部依赖等维度进行汇总：</p>
+<!-- ==================== Comparison Table ==================== -->
+<div class="compare">
+  <h4>三阶段技术对比</h4>
+  <table class="ctable">
+    <tr>
+      <th style="width:60px">阶段</th>
+      <th>核心模块</th>
+      <th>检索方式</th>
+      <th>核心作用</th>
+      <th>技术实现</th>
+      <th>延迟</th>
+      <th>外部依赖</th>
+    </tr>
+    <tr>
+      <td><b>S1 粗筛</b></td>
+      <td class="left"><code>parse_intent()</code><br><code>build_where_filter()</code></td>
+      <td>正则 + 词典匹配</td>
+      <td>锁定文档范围，消除实体混淆</td>
+      <td>别名词典 + 6位代码正则 + 季度映射</td>
+      <td class="accent">&lt;1ms</td>
+      <td>无</td>
+    </tr>
+    <tr>
+      <td><b>S2 混排</b></td>
+      <td class="left"><code>hybrid_rerank()</code><br><code>BM25</code> 类</td>
+      <td>向量 + BM25 双路</td>
+      <td>语义召回 + 关键词精确匹配互补</td>
+      <td>自研轻量 BM25 + RRF 融合 (k=60)</td>
+      <td class="accent">~5ms</td>
+      <td>无</td>
+    </tr>
+    <tr class="highlight">
+      <td><b>S3 精排</b></td>
+      <td class="left"><code>bge_rerank()</code><br>+ 断路器</td>
+      <td>Cross-Encoder 精排</td>
+      <td>精准判定 query↔doc 相关性</td>
+      <td>BGE-Reranker-v2-m3 (硅基流动API)</td>
+      <td class="accent">~200ms</td>
+      <td>硅基流动 API</td>
+    </tr>
+  </table>
+</div>
+
+<p class="narr">在实际开发过程中，三阶段架构的参数调优与降级策略是主要的工程难点，以下是我们遇到的关键问题及对应解决思路：</p>
+<!-- ==================== Difficulty Notes ==================== -->
+<div class="difficulty">
+  <h4>⚙ 设计难点与解决思路</h4>
+  <div class="diff-grid">
+    <div class="diff-item">
+      <div class="q">❶ 权重如何调优？</div>
+      <div class="a">BM25权重 <b>0.4</b> 与向量权重 <b>0.6</b> 基于金融语料 A/B 实验确定；过高的 BM25 权重会导致同义词（"营业收入"vs"总收入"）漏召回</div>
+    </div>
+    <div class="diff-item">
+      <div class="q">❷ 断路器阈值设定？</div>
+      <div class="a">阈值 <b>0.6</b>：过高会误杀相关文档（假阴性），过低则放行噪声。金融报表语义密度高，需要比通用场景更严格的阈值</div>
+    </div>
+    <div class="diff-item">
+      <div class="q">❸ 三阶段串行延迟？</div>
+      <div class="a">S1+S2 均为<b>本地计算</b>（&lt;6ms），延迟主要来自 S3 API 调用（~200ms）；通过 S1 缩小候选池，有效控制 S3 的 payload 大小</div>
+    </div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

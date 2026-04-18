@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>数据流全景</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Microsoft YaHei','SimHei',sans-serif;background:#fff;color:#1a1a2e;display:flex;justify-content:center;padding:24px}
+.wrap{width:900px}
+
+.title{text-align:center;margin-bottom:18px}
+.title h2{font-size:15px;font-weight:700;letter-spacing:3px;color:#1a1a2e}
+.title .sub{font-size:10px;color:#888;margin-top:2px;letter-spacing:1px}
+
+/* ---- Horizontal Flow River ---- */
+.river{
+  position:relative;
+  padding:0;
+}
+
+/* The main horizontal flow backbone */
+.backbone{
+  display:flex;align-items:center;justify-content:center;
+  gap:0;margin-bottom:22px;position:relative
+}
+/* long gradient line behind nodes */
+.backbone::before{
+  content:'';position:absolute;top:50%;left:30px;right:30px;
+  height:3px;border-radius:2px;
+  background:linear-gradient(90deg,#2c3e50,#2980b9,#e67e22,#8e44ad,#27ae60);
+  z-index:0
+}
+.bb-node{
+  position:relative;z-index:1;
+  padding:9px 16px;border-radius:8px;
+  font-size:10px;font-weight:700;letter-spacing:1px;
+  text-align:center;color:#fff;
+  box-shadow:0 3px 12px rgba(0,0,0,.15);
+  white-space:nowrap
+}
+.bb-node .en{display:block;font-size:7px;font-weight:400;opacity:.8;margin-top:1px;letter-spacing:0}
+.bb-start{background:linear-gradient(135deg,#2c3e50,#34495e);padding:11px 22px;font-size:12px}
+.bb-end{background:linear-gradient(135deg,#2c3e50,#34495e);padding:11px 22px;font-size:12px}
+.bb-mid{background:linear-gradient(135deg,#5d6d7e,#85929e);font-size:9px;padding:7px 12px}
+
+/* Arrow connectors on backbone */
+.bb-arrow{
+  position:relative;z-index:1;
+  width:36px;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0
+}
+.bb-arrow::after{
+  content:'';width:0;height:0;
+  border-top:5px solid transparent;border-bottom:5px solid transparent;
+  border-left:8px solid rgba(44,62,80,.3)
+}
+
+/* ---- Expand Rows (detail below backbone) ---- */
+.detail-rows{display:flex;flex-direction:column;gap:10px}
+
+.d-row{
+  display:flex;align-items:center;
+  padding:0;position:relative
+}
+
+/* Left label pill */
+.d-label{
+  flex-shrink:0;width:100px;
+  padding:8px 0;border-radius:6px;
+  text-align:center;font-size:10px;font-weight:700;
+  color:#fff;letter-spacing:1px;
+  box-shadow:0 2px 8px rgba(0,0,0,.12);
+  position:relative;z-index:1
+}
+
+/* Flowing connector from label to chain */
+.d-connector{
+  width:20px;height:2px;flex-shrink:0;
+  position:relative
+}
+.d-connector::after{
+  content:'';position:absolute;top:-3px;right:0;
+  width:0;height:0;
+  border-top:4px solid transparent;border-bottom:4px solid transparent
+}
+
+/* Chain of nodes */
+.d-chain{
+  display:flex;align-items:center;gap:0;flex:1;
+  padding:8px 12px;border-radius:8px;
+  position:relative;overflow:hidden
+}
+/* flowing gradient bg */
+.d-chain::before{
+  content:'';position:absolute;inset:0;opacity:.45;z-index:0;
+  border-radius:8px
+}
+.d-chain > *{position:relative;z-index:1}
+
+.dc-node{
+  padding:6px 12px;border-radius:6px;
+  font-size:9px;font-weight:600;line-height:1.4;
+  text-align:center;background:#fff;
+  border:1.5px solid;white-space:nowrap;
+  box-shadow:0 1px 6px rgba(0,0,0,.06)
+}
+.dc-node .sub{
+  display:block;font-size:7px;font-weight:400;color:#777;margin-top:1px
+}
+.dc-node code{
+  background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;
+  padding:0 2px;font-size:7px;font-family:'Consolas','Monaco',monospace;color:#c0392b
+}
+.dc-arrow{
+  flex-shrink:0;padding:0 4px;display:flex;align-items:center
+}
+.dc-arrow svg{width:18px;height:10px}
+
+/* ---- Row Themes ---- */
+/* RAG */
+.dr-rag .d-label{background:linear-gradient(135deg,#2980b9,#3498db)}
+.dr-rag .d-connector{background:linear-gradient(90deg,#3498db,#aed6f1)}
+.dr-rag .d-connector::after{border-left:6px solid #aed6f1}
+.dr-rag .d-chain::before{background:linear-gradient(90deg,#eaf4fd,#f7fbff)}
+.dr-rag .dc-node{border-color:#aed6f1;color:#1a5276}
+.dr-rag .dc-arrow svg{fill:#aed6f1}
+
+/* Agent */
+.dr-agent .d-label{background:linear-gradient(135deg,#d35400,#e67e22)}
+.dr-agent .d-connector{background:linear-gradient(90deg,#e67e22,#f5cba7)}
+.dr-agent .d-connector::after{border-left:6px solid #f5cba7}
+.dr-agent .d-chain::before{background:linear-gradient(90deg,#fef5e7,#fffcf8)}
+.dr-agent .dc-node{border-color:#f5cba7;color:#7e3f00}
+.dr-agent .dc-arrow svg{fill:#f5cba7}
+
+/* Backtest */
+.dr-bt .d-label{background:linear-gradient(135deg,#7d3c98,#a569bd)}
+.dr-bt .d-connector{background:linear-gradient(90deg,#a569bd,#d2b4de)}
+.dr-bt .d-connector::after{border-left:6px solid #d2b4de}
+.dr-bt .d-chain::before{background:linear-gradient(90deg,#f4ecf7,#fcf8ff)}
+.dr-bt .dc-node{border-color:#d2b4de;color:#6c3483}
+.dr-bt .dc-arrow svg{fill:#d2b4de}
+
+/* Portfolio */
+.dr-pf .d-label{background:linear-gradient(135deg,#1e8449,#27ae60)}
+.dr-pf .d-connector{background:linear-gradient(90deg,#27ae60,#a9dfbf)}
+.dr-pf .d-connector::after{border-left:6px solid #a9dfbf}
+.dr-pf .d-chain::before{background:linear-gradient(90deg,#eafaf1,#f8fff8)}
+.dr-pf .dc-node{border-color:#a9dfbf;color:#1e8449}
+.dr-pf .dc-arrow svg{fill:#a9dfbf}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="title">
+  <h2>数据流全景</h2>
+  <div class="sub">Data Flow Panorama · End-to-End Processing Pipeline</div>
+</div>
+
+<div class="river">
+
+<!-- ==================== Backbone ==================== -->
+<div class="backbone">
+  <div class="bb-node bb-start">用户提问<span class="en">User Query</span></div>
+  <div class="bb-arrow"></div>
+  <div class="bb-node bb-mid">意图路由<span class="en">Intent Router</span></div>
+  <div class="bb-arrow"></div>
+  <div class="bb-node bb-mid">业务处理<span class="en">4 Pipelines</span></div>
+  <div class="bb-arrow"></div>
+  <div class="bb-node bb-mid">流式输出<span class="en">SSE Stream</span></div>
+  <div class="bb-arrow"></div>
+  <div class="bb-node bb-end">前端渲染<span class="en">Vue Frontend</span></div>
+</div>
+
+<!-- ==================== Detail Rows ==================== -->
+<div class="detail-rows">
+
+  <!-- RAG -->
+  <div class="d-row dr-rag">
+    <div class="d-label">财报相关</div>
+    <div class="d-connector"></div>
+    <div class="d-chain">
+      <div class="dc-node">意图解析<span class="sub"><code>query_router</code> 提取公司/年份</span></div>
+      <div class="dc-arrow"><svg viewBox="0 0 18 10"><polygon points="0,0 12,5 0,10" opacity=".6"/><line x1="0" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="1.5" opacity=".3"/></svg></div>
+      <div class="dc-node">元数据过滤<span class="sub">公司+季度定位</span></div>
+      <div class="dc-arrow"><svg viewBox="0 0 18 10"><polygon points="0,0 12,5 0,10" opacity=".6"/><line x1="0" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="1.5" opacity=".3"/></svg></div>
+      <div class="dc-node">ChromaDB 检索<span class="sub"><code>BM25 + 向量 RRF 融合</code></span></div>
+      <div class="dc-arrow"><svg viewBox="0 0 18 10"><polygon points="0,0 12,5 0,10" opacity=".6"/><line x1="0" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="1.5" opacity=".3"/></svg></div>
+      <div class="dc-node">K2.5 生成<span class="sub">带来源页码引用</span></div>
+    </div>
+  </div>
+
+  <!-- Agent -->
+  <div class="d-row dr-agent">
+    <div class="d-label">行情 / 分析</div>
+    <div class="d-connector"></div>
+    <div class="d-chain">
+      <div class="dc-node">K2.5 + <code>$web_search</code><span class="sub">模型自动判断何时联网</span></div>
+      <div class="dc-arrow"><svg viewBox="0 0 18 10"><polygon points="0,0 12,5 0,10" opacity=".6"/><line x1="0" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="1.5" opacity=".3"/></svg></div>
+      <div class="dc-node">Tushare 行情数据<span class="sub"><code>Redis 分层缓存</code></span></div>
+      <div class="dc-arrow"><svg viewBox="0 0 18 10"><polygon points="0,0 12,5 0,10" opacity=".6"/><line x1="0" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="1.5" opacity=".3"/></svg></div>
+      <div class="dc-node">综合分析报告<span class="sub">缓存 TTL=10min</span></div>
+    </div>
+  </div>
+
+  <!-- Backtest -->
+  <div class="d-row dr-bt">
+    <div class="d-label">回测策略</div>
+    <div class="d-connector"></div>
+    <div class="d-chain">
+      <div class="dc-node">Agent 翻译条件<span class="sub">自然语言 → <code>conditions JSON</code></span></div>
+      <div class="dc-arrow"><svg viewBox="0 0 18 10"><polygon points="0,0 12,5 0,10" opacity=".6"/><line x1="0" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="1.5" opacity=".3"/></svg></div>
+      <div class="dc-node">Backtrader 引擎<span class="sub"><code>FlexibleStrategy</code></span></div>
+      <div class="dc-arrow"><svg viewBox="0 0 18 10"><polygon points="0,0 12,5 0,10" opacity=".6"/><line x1="0" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="1.5" opacity=".3"/></svg></div>
+      <div class="dc-node">资金曲线 + 指标<span class="sub">收益 / 夏普 / 回撤</span></div>
+    </div>
+  </div>
+
+  <!-- Portfolio -->
+  <div class="d-row dr-pf">
+    <div class="d-label">买卖操作</div>
+    <div class="d-connector"></div>
+    <div class="d-chain">
+      <div class="dc-node">记录交易<span class="sub"><code>A股费用模拟</code></span></div>
+      <div class="dc-arrow"><svg viewBox="0 0 18 10"><polygon points="0,0 12,5 0,10" opacity=".6"/><line x1="0" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="1.5" opacity=".3"/></svg></div>
+      <div class="dc-node">计算持仓<span class="sub"><code>加权平均成本法</code></span></div>
+      <div class="dc-arrow"><svg viewBox="0 0 18 10"><polygon points="0,0 12,5 0,10" opacity=".6"/><line x1="0" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="1.5" opacity=".3"/></svg></div>
+      <div class="dc-node">实时估值<span class="sub">联动 BaoStock 行情</span></div>
+    </div>
+  </div>
+
+</div><!-- /detail-rows -->
+</div><!-- /river -->
+
+</div>
+</body>
+</html>

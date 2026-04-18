@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Agent 多工具协同与流式输出</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Microsoft YaHei','SimHei',sans-serif;background:#fff;color:#1a1a2e;display:flex;justify-content:center;padding:24px}
+.wrap{width:900px}
+
+/* ---- Title ---- */
+.title{text-align:center;margin-bottom:6px}
+.title h2{font-size:15px;font-weight:700;letter-spacing:3px;color:#1a1a2e}
+.title .sub{font-size:10px;color:#888;margin-top:2px;letter-spacing:1px}
+
+/* ---- Narrative ---- */
+.narr{font-size:9.5px;color:#444;line-height:1.7;margin:8px 0;padding:0 2px;text-indent:2em}
+.narr b{color:#1a1a2e}
+.narr code{
+  background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;
+  padding:0 3px;font-size:7.5px;font-family:'Consolas','Monaco',monospace;color:#c0392b
+}
+.narr-intro{
+  font-size:9.5px;color:#444;line-height:1.7;margin:6px 0 12px;
+  padding:6px 12px;background:#f7f9fc;border-left:3px solid #2980b9;border-radius:0 4px 4px 0
+}
+.narr-intro b{color:#1a1a2e}
+
+/* ---- Problem Banner ---- */
+.problem{
+  background:linear-gradient(135deg,#fff5f5,#fff0f0);
+  border:1px solid #e8c4c4;border-radius:6px;
+  padding:10px 14px;margin:10px 0 8px;display:flex;gap:10px;align-items:flex-start
+}
+.problem .icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.problem .content{flex:1}
+.problem .content h4{font-size:10.5px;color:#c0392b;margin-bottom:3px;font-weight:700}
+.problem .content p{font-size:9px;color:#666;line-height:1.6}
+.problem .content p b{color:#c0392b}
+
+/* ---- Agent Loop Diagram ---- */
+.loop-box{
+  margin-bottom:12px;border:1.5px solid #2c3e50;border-radius:8px;
+  padding:14px;position:relative;overflow:hidden;
+  background:linear-gradient(135deg,#fafbfc,#f0f3f5)
+}
+.loop-box::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#2c3e50,#85929e)}
+.loop-box h3{font-size:11px;font-weight:700;margin:2px 0 10px;color:#2c3e50;text-align:center}
+.loop-box h3 .tag{
+  display:inline-block;padding:1px 6px;border-radius:3px;font-size:7.5px;font-weight:600;
+  background:#ebedef;color:#2c3e50;border:1px solid #aeb6bf
+}
+
+/* Loop flow */
+.loop-flow{display:flex;align-items:center;justify-content:center;gap:0;margin-bottom:8px}
+.loop-node{
+  padding:8px 10px;border-radius:6px;font-size:8.5px;font-weight:600;
+  text-align:center;line-height:1.4;min-width:90px;position:relative
+}
+.loop-node .sub{font-size:7px;font-weight:400;color:#666;margin-top:2px}
+.loop-arrow{display:flex;align-items:center;font-size:13px;color:#aaa;padding:0 3px}
+
+.ln-retrieve{background:#eaf2fd;border:1.5px solid #aed6f1;color:#1a5276}
+.ln-kimi{background:#fef5e7;border:1.5px solid #f5cba7;color:#7e3f00}
+.ln-tool{background:#f4ecf7;border:1.5px solid #d2b4de;color:#6c3483}
+.ln-inject{background:#d5f5e3;border:1.5px solid #82e0aa;color:#145a32}
+.ln-stream{background:#fce4ec;border:1.5px solid #f1948a;color:#922b21}
+
+/* Loop back arrow */
+.loop-back{
+  display:flex;justify-content:center;align-items:center;gap:6px;
+  margin-top:4px;font-size:8px;color:#888
+}
+.loop-back .line{
+  flex:1;max-width:200px;height:1px;
+  border-top:1.5px dashed #bbb
+}
+.loop-back .label{
+  padding:2px 10px;background:#fff;border:1px dashed #bbb;border-radius:10px;
+  font-size:7.5px;color:#888;white-space:nowrap
+}
+
+/* ---- Tool Cards ---- */
+.tools-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.tool{
+  border:1.5px solid;border-radius:8px;padding:11px 12px 9px;
+  position:relative;overflow:hidden;background:#fff
+}
+.tool::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.tool .icon-badge{
+  position:absolute;top:8px;right:10px;
+  width:24px;height:24px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;color:#fff
+}
+.tool h4{font-size:10.5px;font-weight:700;margin:1px 0 5px;padding-right:30px}
+.tool h4 .en{font-size:8px;color:#999;font-weight:400;display:block;margin-top:1px}
+.tool .items{font-size:8.5px;color:#444;line-height:1.7}
+.tool .items b{color:#1a1a2e}
+.tool .items code{
+  background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;
+  padding:0 3px;font-size:7.5px;font-family:'Consolas','Monaco',monospace;color:#c0392b
+}
+
+.tool-search{border-color:#3498db}
+.tool-search::before{background:linear-gradient(90deg,#3498db,#85c1e9)}
+.tool-search .icon-badge{background:#3498db}
+.tool-fetch{border-color:#e67e22}
+.tool-fetch::before{background:linear-gradient(90deg,#e67e22,#f0b27a)}
+.tool-fetch .icon-badge{background:#e67e22}
+.tool-backtest{border-color:#8e44ad}
+.tool-backtest::before{background:linear-gradient(90deg,#8e44ad,#c39bd3)}
+.tool-backtest .icon-badge{background:#8e44ad}
+.tool-portfolio{border-color:#27ae60}
+.tool-portfolio::before{background:linear-gradient(90deg,#27ae60,#82e0aa)}
+.tool-portfolio .icon-badge{background:#27ae60}
+
+/* ---- SSE Stream Detail ---- */
+.sse-box{
+  margin-bottom:12px;border:1.5px solid #e74c3c;border-radius:8px;
+  padding:12px 14px;position:relative;overflow:hidden;background:#fff
+}
+.sse-box::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#e74c3c,#f1948a)}
+.sse-box h3{font-size:11px;font-weight:700;margin:2px 0 8px;color:#c0392b;display:flex;align-items:center;gap:6px}
+.sse-box h3 .tag{
+  display:inline-block;padding:1px 6px;border-radius:3px;font-size:7.5px;font-weight:600;
+  background:#fdedec;color:#922b21;border:1px solid #f5b7b1
+}
+.sse-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sse-panel{font-size:8.5px;color:#444;line-height:1.7}
+.sse-panel b{color:#1a1a2e}
+.sse-panel code{
+  background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;
+  padding:0 3px;font-size:7.5px;font-family:'Consolas','Monaco',monospace;color:#c0392b
+}
+.evt-table{width:100%;border-collapse:collapse;font-size:8.5px;margin-top:4px}
+.evt-table th{
+  background:#c0392b;color:#fff;padding:4px 6px;
+  font-weight:600;text-align:left;font-size:8px
+}
+.evt-table td{padding:3px 6px;border:1px solid #e0e0e0;line-height:1.4}
+.evt-table tr:nth-child(even){background:#fdf2f2}
+.evt-table td code{
+  background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;
+  padding:0 2px;font-size:7px;font-family:'Consolas','Monaco',monospace;color:#c0392b
+}
+
+/* ---- Stream Architecture ---- */
+.stream-arch{
+  margin-bottom:12px;border:1.5px solid #8e44ad;border-radius:8px;
+  padding:12px 14px;position:relative;overflow:hidden;background:#fff
+}
+.stream-arch::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#8e44ad,#c39bd3)}
+.stream-arch h3{font-size:11px;font-weight:700;margin:2px 0 8px;color:#6c3483;display:flex;align-items:center;gap:6px}
+.stream-arch h3 .tag{
+  display:inline-block;padding:1px 6px;border-radius:3px;font-size:7.5px;font-weight:600;
+  background:#f4ecf7;color:#6c3483;border:1px solid #d2b4de
+}
+.stream-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stream-panel{padding:8px 10px;border:1px solid #e8e8e8;border-radius:6px;background:#fafbfc}
+.stream-panel h5{font-size:9px;font-weight:700;color:#2c3e50;margin-bottom:4px;text-align:center}
+.stream-panel .code{
+  font-family:'Consolas','Monaco',monospace;font-size:7.5px;
+  background:#2c3e50;color:#ecf0f1;padding:6px 8px;border-radius:4px;
+  line-height:1.5;white-space:pre
+}
+.stream-panel .code .k{color:#f39c12}
+.stream-panel .code .c{color:#7f8c8d;font-style:italic}
+.stream-panel .code .s{color:#2ecc71}
+.stream-panel .note{font-size:7.5px;color:#888;margin-top:4px;text-align:center}
+
+/* ---- Comparison Table ---- */
+.compare{margin-bottom:12px}
+.compare h4{font-size:10px;font-weight:700;margin-bottom:6px;color:#2c3e50;text-align:center}
+.ctable{width:100%;border-collapse:collapse;font-size:8.5px}
+.ctable th{
+  background:#2c3e50;color:#fff;padding:5px 8px;
+  font-weight:600;text-align:center;font-size:8px;letter-spacing:0.5px
+}
+.ctable td{padding:5px 8px;border:1px solid #ddd;text-align:center;line-height:1.5}
+.ctable tr:nth-child(even){background:#f8f9fa}
+.ctable .left{text-align:left}
+.ctable .highlight{background:#eafaf1;font-weight:600}
+.ctable .accent{color:#c0392b;font-weight:700}
+.ctable .good{color:#27ae60;font-weight:700}
+
+/* ---- Metrics Bar ---- */
+.metrics{display:flex;gap:6px;justify-content:center;margin:12px 0}
+.m{
+  border:1px solid #ddd;border-radius:6px;padding:6px 14px;
+  text-align:center;background:#fafbfc;flex:1;max-width:150px
+}
+.m .val{font-size:15px;font-weight:700;color:#2c3e50;line-height:1.2}
+.m .lbl{font-size:7.5px;color:#888;margin-top:1px}
+
+/* ---- Difficulty Notes ---- */
+.difficulty{
+  padding:10px 14px;
+  border:1px solid #d5d8dc;border-radius:6px;
+  background:#fdfdfe
+}
+.difficulty h4{font-size:10px;font-weight:700;margin-bottom:6px;color:#2c3e50}
+.diff-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.diff-item{padding:6px 8px;border-radius:4px;border:1px solid #e8e8e8;background:#fff}
+.diff-item .q{font-size:8.5px;color:#c0392b;font-weight:600;margin-bottom:3px}
+.diff-item .a{font-size:8px;color:#555;line-height:1.5}
+.diff-item .a b{color:#1a1a2e}
+.diff-item .a code{
+  background:#f4f4f4;border:1px solid #e0e0e0;border-radius:2px;
+  padding:0 2px;font-size:7px;font-family:'Consolas','Monaco',monospace;color:#c0392b
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- Title -->
+<div class="title">
+  <h2>Agent 多工具协同与流式输出</h2>
+  <div class="sub">Agent Multi-Tool Orchestration & Streaming · rag/service.py + agent/stream.py</div>
+</div>
+
+<!-- Problem Statement -->
+<div class="problem">
+  <div class="icon">⚠</div>
+  <div class="content">
+    <h4>核心挑战：一次对话中协调多个异构工具并全程流式输出</h4>
+    <p>用户的一个问题可能同时需要<b>向量库检索</b>（查已有财报）、<b>财报抓取入库</b>（缺失时自动下载）、<b>量化回测</b>（执行策略）、<b>虚拟交易</b>（记录持仓）四类异构工具协同工作。工具调用发生在流式对话过程中，模型需要<b>自主决定</b>调用哪些工具、以什么顺序调用，且全程保持 SSE 流式推送 — 用户在等待工具执行时需要看到<b>实时进度反馈</b>（"正在检索知识库…""正在回测 贵州茅台「双均线策略」…"），而不是长时间的空白等待。</p>
+  </div>
+</div>
+
+<div class="narr-intro">针对上述挑战，我们在 <code>rag_chat_stream()</code> 中实现了一个<b>多轮 Agent Loop</b>：先通过 retrieve() 获取初始上下文，然后进入 K2.5 function calling 循环 — 模型自主决定调用哪些工具，工具执行结果注入 messages 后模型继续推理，直到产生最终回答。全程通过 SSE 事件流实时推送进度、来源、文本等多种事件类型，确保用户体验流畅。核心架构如下：</div>
+
+<!-- ==================== Agent Loop ==================== -->
+<div class="loop-box">
+  <h3>Agent Loop 核心流程 <span class="tag">rag_chat_stream() · max_rounds 轮循环</span></h3>
+  <div class="loop-flow">
+    <div class="loop-node ln-retrieve">① retrieve()<div class="sub">三阶段漏斗检索<br>获取初始上下文</div></div>
+    <span class="loop-arrow">→</span>
+    <div class="loop-node ln-kimi">② K2.5 流式调用<div class="sub">function calling<br>模型自主决策工具</div></div>
+    <span class="loop-arrow">→</span>
+    <div class="loop-node ln-tool">③ 工具执行<div class="sub">search / fetch /<br>backtest / portfolio</div></div>
+    <span class="loop-arrow">→</span>
+    <div class="loop-node ln-inject">④ 结果注入<div class="sub">tool message 追加<br>到 messages 列表</div></div>
+    <span class="loop-arrow">→</span>
+    <div class="loop-node ln-stream">⑤ 最终流式输出<div class="sub">SSE text 事件<br>逐 token 推送</div></div>
+  </div>
+  <div class="loop-back">
+    <div class="line"></div>
+    <div class="label">tool_calls 轮次 → 回到 ② 继续推理（最多 max_rounds 轮）</div>
+    <div class="line"></div>
+  </div>
+</div>
+
+<p class="narr">Agent Loop 中模型可以调用的工具共四类，覆盖从知识检索到量化交易的完整业务链条。每个工具在执行过程中通过 <code>progress_queue</code> 实时推送进度事件，让用户始终知道系统在做什么：</p>
+
+<!-- ==================== Four Tools ==================== -->
+<div class="tools-grid">
+  <div class="tool tool-search">
+    <h4>search_vector_store<span class="en">向量库精确检索</span></h4>
+    <div class="items">
+      <b>功能</b>：在用户知识库中检索与 query 最相关的文档块<br>
+      <b>调用时机</b>：模型判断需要更多上下文、或换一个检索角度<br>
+      <b>参数</b>：<code>query</code> + 可选 <code>document_ids</code>（限定范围）<br>
+      <b>返回</b>：匹配的 chunks + sources 来源信息<br>
+      <b>频率控制</b>：system prompt 限制"<b>每家公司最多 1-2 次</b>"
+    </div>
+  </div>
+
+  <div class="tool tool-fetch">
+    <h4>fetch_financial_report<span class="en">巨潮资讯网抓取 + 自动入库</span></h4>
+    <div class="items">
+      <b>功能</b>：从巨潮资讯网下载指定财报 PDF → 解析 → 分块 → 入库 ChromaDB<br>
+      <b>调用时机</b>：知识库中缺少用户问到的财报<br>
+      <b>参数</b>：<code>company_name</code> + <code>stock_code</code> + <code>year</code><br>
+      <b>返回</b>：<code>already_exists</code> / <code>success</code> / <code>failed</code> + document_id<br>
+      <b>联动</b>：入库后自动将 document_id 加入 <code>preferred_document_ids</code>
+    </div>
+  </div>
+
+  <div class="tool tool-backtest">
+    <h4>run_backtest<span class="en">量化回测引擎</span></h4>
+    <div class="items">
+      <b>功能</b>：将自然语言策略翻译为条件 JSON → FlexibleStrategy 执行回测<br>
+      <b>调用时机</b>：用户描述交易策略、问技术面分析<br>
+      <b>参数</b>：<code>ts_code</code> + <code>buy/sell_conditions</code> + <code>logic</code><br>
+      <b>返回</b>：收益率 / 夏普比 / 最大回撤 / 交易明细 / 资金曲线<br>
+      <b>执行方式</b>：<code>run_in_executor</code> 线程池（CPU 密集型）
+    </div>
+  </div>
+
+  <div class="tool tool-portfolio">
+    <h4>portfolio_trade / portfolio_query<span class="en">虚拟持仓操作</span></h4>
+    <div class="items">
+      <b>trade</b>：记录虚拟买入/卖出（自动计算 A 股佣金+印花税）<br>
+      <b>query</b>：查询当前持仓 + 实时估值（联动 BaoStock 最新行情）<br>
+      <b>调用时机</b>：用户说"买入 XX 股"或问"我的持仓"<br>
+      <b>返回</b>：持仓详情 / 交易确认 / 盈亏统计<br>
+      <b>持久化</b>：SQLAlchemy <code>Portfolio</code> + <code>PortfolioTransaction</code> 模型
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SSE Event Types ==================== -->
+<div class="sse-box">
+  <h3>SSE 事件类型与流式协议 <span class="tag">text/event-stream · 7 种事件</span></h3>
+  <div class="sse-grid">
+    <div class="sse-panel">
+      <table class="evt-table">
+        <tr><th>事件类型</th><th>含义</th><th>前端处理</th></tr>
+        <tr><td><code>phase</code></td><td>进度提示（"正在检索…"）</td><td>显示思考步骤气泡</td></tr>
+        <tr><td><code>sources</code></td><td>检索来源（文件名+页码+分数）</td><td>渲染引用卡片</td></tr>
+        <tr><td><code>text</code></td><td>正文内容（逐 token）</td><td>Markdown 渲染追加</td></tr>
+        <tr><td><code>interaction</code></td><td>结构化交互建议 JSON</td><td>渲染追问按钮</td></tr>
+        <tr><td><code>report_ready</code></td><td>新财报入库通知</td><td>提示可再次分析</td></tr>
+        <tr><td><code>finish</code></td><td>完成（含 total_length）</td><td>结束加载动画</td></tr>
+        <tr><td><code>error</code></td><td>错误信息</td><td>显示错误提示</td></tr>
+      </table>
+    </div>
+    <div class="sse-panel">
+      <b>流式输出时序</b>（一次典型对话）：<br><br>
+      <code>phase</code> "正在检索相关文档…"<br>
+      <code>sources</code> [{source, page, score}, …]<br>
+      <code>phase</code> "AI 正在分析…"<br>
+      <code>phase</code> "正在检查XX年财报是否已入库…"<br>
+      <code>phase</code> "✓ 已下载并入库（320个向量块）"<br>
+      <code>report_ready</code> {company, document_id}<br>
+      <code>phase</code> "AI 正在整合分析结果…"<br>
+      <code>text</code> "根据平安银行2024年年报…"（逐token）<br>
+      <code>interaction</code> {suggestions: […]}<br>
+      <code>finish</code> {total_length: 2374}<br>
+    </div>
+  </div>
+</div>
+
+<p class="narr">流式与工具调用的混合处理是本模块最复杂的工程问题。下面从 Producer-Consumer 分离架构和 tool_calls 轮次处理两个维度详细展示实现方案：</p>
+
+<!-- ==================== Stream Architecture ==================== -->
+<div class="stream-arch">
+  <h3>流式架构实现 <span class="tag">StreamHub · Producer-Consumer 分离</span></h3>
+  <div class="stream-grid">
+    <div class="stream-panel">
+      <h5>Producer-Consumer 分离（agent/stream.py）</h5>
+      <div class="code"><span class="c"># Producer: 后台任务生成事件</span>
+<span class="k">async def</span> producer():
+    <span class="k">async for</span> chunk <span class="k">in</span> rag_chat_stream(...):
+        <span class="k">await</span> session.publish_chunk(chunk)
+    <span class="k">await</span> session.close()
+
+<span class="c"># Consumer: SSE 端点消费事件</span>
+<span class="k">async def</span> consumer(last_event_id):
+    <span class="k">async for</span> event <span class="k">in</span> session.stream_from(
+        last_event_id  <span class="c"># 支持断线续传</span>
+    ):
+        <span class="k">yield</span> f<span class="s">"id: {id}\n{chunk}"</span></div>
+      <div class="note">StreamSession 用 asyncio.Condition 通知 + deque(maxlen=5000) 缓存</div>
+    </div>
+
+    <div class="stream-panel">
+      <h5>tool_calls 轮次处理（rag/service.py）</h5>
+      <div class="code"><span class="k">for</span> _round <span class="k">in</span> range(max_rounds):
+    stream = <span class="k">await</span> kimi.create(
+        messages, tools, <span class="s">stream=True</span>)
+
+    <span class="c"># 收集 tool_calls 碎片</span>
+    <span class="k">async for</span> chunk <span class="k">in</span> stream:
+        <span class="k">if</span> delta.tool_calls:
+            collected[idx] += args  <span class="c"># 拼接</span>
+        <span class="k">elif</span> delta.content:
+            <span class="k">yield</span> text_event  <span class="c"># 实时推送</span>
+
+    <span class="k">if</span> is_tool_call:
+        execute_tools → inject results
+        <span class="k">continue</span>  <span class="c"># 下一轮</span>
+    <span class="k">break</span>  <span class="c"># 最终回复完成</span></div>
+      <div class="note">tool_calls 轮次的 content（中间思考）不输出给用户，避免泄漏</div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Key Metrics ==================== -->
+<div class="metrics">
+  <div class="m"><div class="val">4</div><div class="lbl">Agent 工具类型</div></div>
+  <div class="m"><div class="val">7</div><div class="lbl">SSE 事件类型</div></div>
+  <div class="m"><div class="val">多轮</div><div class="lbl">function calling 循环</div></div>
+  <div class="m"><div class="val">5000</div><div class="lbl">事件缓存上限</div></div>
+  <div class="m"><div class="val">SSE</div><div class="lbl">全程流式推送</div></div>
+  <div class="m"><div class="val">3次</div><div class="lbl">过载指数退避重试</div></div>
+</div>
+
+<p class="narr">在实际开发中，Agent 多工具协同的主要工程难点集中在流式与工具调用的混合时序控制、断线恢复、以及防止模型陷入工具调用死循环。以下是我们遇到的三个关键挑战及对应的解决方案：</p>
+
+<!-- ==================== Difficulty Notes ==================== -->
+<div class="difficulty">
+  <h4>⚙ 设计难点与解决思路</h4>
+  <div class="diff-grid">
+    <div class="diff-item">
+      <div class="q">❶ 流式与 tool_calls 的混合时序</div>
+      <div class="a">tool_calls 轮次中模型可能先输出一段"中间思考"文本再产生工具调用。解法：用 <code>is_tool_call</code> 标记位，一旦检测到 tool_calls 立即<b>停止输出 content</b>（避免泄漏中间推理），该轮 content 仅用于 messages 上下文传递</div>
+    </div>
+    <div class="diff-item">
+      <div class="q">❷ 断线续传（resume）</div>
+      <div class="a">移动端网络不稳定可能中断 SSE 连接。解法：<b>StreamHub</b> 为每个会话缓存最近 5000 条事件（带递增 event_id），客户端重连时携带 <code>last_event_id</code>，<code>stream_from()</code> 从断点处恢复推送</div>
+    </div>
+    <div class="diff-item">
+      <div class="q">❸ 工具调用死循环防护</div>
+      <div class="a">LLM 可能反复调用 search_vector_store 却找不到结果。解法：<b>双重防护</b> — ① <code>max_rounds</code> 硬性限制循环次数，② system prompt 中明确规定"每家公司最多 1-2 次 search"，轮次耗尽则<b>强制生成最终回答</b></div>
+    </div>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

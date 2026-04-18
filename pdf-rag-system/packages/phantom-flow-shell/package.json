@@ -1,0 +1,47 @@
+{
+  "name": "@phantom-flow/shell",
+  "version": "0.1.0",
+  "description": "Configurable modular dashboard shell for Vue 3 — sidebar, module switching, SSE streaming, and more.",
+  "type": "module",
+  "main": "./dist/phantom-flow-shell.umd.cjs",
+  "module": "./dist/phantom-flow-shell.js",
+  "exports": {
+    ".": {
+      "import": "./dist/phantom-flow-shell.js",
+      "require": "./dist/phantom-flow-shell.umd.cjs"
+    },
+    "./style.css": "./dist/style.css",
+    "./tailwind-preset": "./src/styles/tailwind-preset.js"
+  },
+  "files": [
+    "dist",
+    "src/styles/tailwind-preset.js"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch"
+  },
+  "peerDependencies": {
+    "vue": "^3.3.0",
+    "lucide-vue-next": ">=0.300.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.3",
+    "vite": "^5.0.12",
+    "vue": "^3.4.15",
+    "lucide-vue-next": "^0.575.0",
+    "tailwindcss": "^3.4.1",
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.33"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.5.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "keywords": ["vue3", "dashboard", "shell", "sidebar", "modular", "sse"]
+}

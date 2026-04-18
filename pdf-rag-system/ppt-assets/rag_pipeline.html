@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>RAG Pipeline</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'SimSun','Microsoft YaHei',serif;background:#fff;color:#222;display:flex;justify-content:center;padding:20px}
+.wrap{width:820px}
+h2{text-align:center;font-size:14px;font-weight:bold;margin-bottom:4px;letter-spacing:2px}
+.sub{text-align:center;font-size:10px;color:#666;margin-bottom:12px}
+.phase{font-size:10px;font-weight:bold;margin-bottom:4px;padding-left:2px}
+.row{display:flex;gap:6px;margin-bottom:4px;align-items:stretch}
+.col{flex:1;display:flex;flex-direction:column}
+.card{border:1px solid #999;padding:7px 8px;flex:1}
+.card h3{font-size:10px;font-weight:bold;margin-bottom:4px;border-bottom:1px solid #ddd;padding-bottom:2px}
+.card .items{font-size:8.5px;color:#444;line-height:1.6}
+.card .items b{color:#222}
+.arr{display:flex;align-items:center;justify-content:center;font-size:14px;color:#666;padding:0 2px;flex-shrink:0}
+.arr-down{text-align:center;font-size:14px;color:#666;margin:3px 0}
+.flow{display:flex;gap:4px;flex-wrap:wrap;justify-content:center;margin:8px 0}
+.step{padding:3px 8px;border:1px solid #888;font-size:8.5px;background:#f8f8f8}
+.fa{color:#666;font-size:10px}
+.metrics{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:10px}
+.m{border:1px solid #999;padding:6px 12px;text-align:center}
+.m .val{font-size:16px;font-weight:bold}
+.m .lbl{font-size:8px;color:#666;margin-top:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h2>图2 RAG检索增强生成Pipeline</h2>
+<div class="sub">Retrieval-Augmented Generation 全链路</div>
+
+<div class="phase">一、离线索引阶段（Indexing）</div>
+<div class="row">
+<div class="col">
+<div class="card">
+<h3>①数据源层</h3>
+<div class="items">
+<b>PDF财报</b> — 年报/半年报/研报<br>
+<b>SQL数据</b> — 财务报表/行情<br>
+<b>Wiki知识</b> — 金融术语/行业<br>
+<b>新闻舆情</b> — 8平台热点
+</div>
+</div>
+</div>
+<div class="arr">→</div>
+<div class="col">
+<div class="card">
+<h3>②预处理层（解析与切片）</h3>
+<div class="items">
+<b>PDF解析</b> — OCR+表格+脚注<br>
+<b>文本清洗</b> — 去噪/编码统一<br>
+<b>滑动窗口分块</b> — 512 tokens, overlap 64<br>
+<b>元数据标注</b> — 来源/页码/章节
+</div>
+</div>
+</div>
+<div class="arr">→</div>
+<div class="col">
+<div class="card">
+<h3>③向量数据库（Vector DB）</h3>
+<div class="items">
+<b>Embedding</b> — text-embedding-3-large<br>
+<b>向量维度</b> — 3072维<br>
+<b>存储引擎</b> — Weaviate / Qdrant<br>
+<b>索引</b> — HNSW (ANN近似最近邻)
+</div>
+</div>
+</div>
+</div>
+
+<div class="arr-down">↓</div>
+
+<div class="phase">二、在线查询阶段（Retrieval + Generation）</div>
+<div class="row">
+<div class="col">
+<div class="card">
+<h3>④查询理解</h3>
+<div class="items">
+<b>意图识别</b> — ChatPreprocessor<br>
+<b>Query改写</b> — 补全/同义扩展<br>
+<b>关键词提取</b> — BM25精确匹配
+</div>
+</div>
+</div>
+<div class="arr">→</div>
+<div class="col">
+<div class="card">
+<h3>⑤混合检索+重排</h3>
+<div class="items">
+<b>向量检索</b> — 余弦相似度<br>
+<b>关键词检索</b> — BM25精确匹配<br>
+<b>RRF融合</b> — 倒数排序融合<br>
+<b>Cross-Encoder</b> — 语义精排<br>
+<b>置信度过滤</b> — 阈值剪枝
+</div>
+</div>
+</div>
+<div class="arr">→</div>
+<div class="col">
+<div class="card">
+<h3>⑥LLM生成+引用</h3>
+<div class="items">
+<b>Prompt模板</b> — 注入检索片段<br>
+<b>流式生成</b> — SSE实时推送<br>
+<b>来源标注</b> — 引用PDF页码<br>
+<b>幻觉抑制</b> — 置信度阈值
+</div>
+</div>
+</div>
+</div>
+
+<div class="flow">
+<span class="step">用户提问</span><span class="fa">→</span>
+<span class="step">意图识别</span><span class="fa">→</span>
+<span class="step">Query改写</span><span class="fa">→</span>
+<span class="step">向量+BM25混合检索</span><span class="fa">→</span>
+<span class="step">Cross-Encoder重排</span><span class="fa">→</span>
+<span class="step">Prompt注入</span><span class="fa">→</span>
+<span class="step">LLM生成+来源引用</span>
+</div>
+
+<div class="metrics">
+<div class="m"><div class="val">98.3%</div><div class="lbl">检索召回率(Recall@10)</div></div>
+<div class="m"><div class="val">94.7%</div><div class="lbl">Top-5精确率</div></div>
+<div class="m"><div class="val">3072维</div><div class="lbl">Embedding维度</div></div>
+<div class="m"><div class="val">&lt;1.2s</div><div class="lbl">首Token延迟(P95)</div></div>
+<div class="m"><div class="val">99.1%</div><div class="lbl">PDF解析成功率</div></div>
+<div class="m"><div class="val">512/64</div><div class="lbl">分块窗口/重叠</div></div>
+</div>
+</div>
+</body>
+</html>

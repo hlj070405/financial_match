@@ -1,0 +1,272 @@
+[
+  {
+    "id": 1,
+    "company": "工商银行",
+    "stock_code": "601398",
+    "report": "601398_工商银行_2024_report.pdf",
+    "category": "financial_data",
+    "question": "工商银行2024年的营业收入是多少？同比变化情况如何？",
+    "hint": "需要从利润表中找到营业收入数据"
+  },
+  {
+    "id": 2,
+    "company": "工商银行",
+    "stock_code": "601398",
+    "report": "601398_工商银行_2024_report.pdf",
+    "category": "financial_data",
+    "question": "工商银行2024年的净利润和不良贷款率分别是多少？",
+    "hint": "净利润在利润表，不良贷款率在资产质量部分"
+  },
+  {
+    "id": 3,
+    "company": "比亚迪",
+    "stock_code": "002594",
+    "report": "002594_比亚迪_2024_report.pdf",
+    "category": "financial_data",
+    "question": "比亚迪2024年的营业收入和净利润分别是多少？同比增长率是多少？",
+    "hint": "核心财务指标"
+  },
+  {
+    "id": 4,
+    "company": "比亚迪",
+    "stock_code": "002594",
+    "report": "002594_比亚迪_2024_report.pdf",
+    "category": "business_analysis",
+    "question": "比亚迪2024年新能源汽车的销量是多少？各车型系列的销量占比情况如何？",
+    "hint": "业务数据部分"
+  },
+  {
+    "id": 5,
+    "company": "比亚迪",
+    "stock_code": "002594",
+    "report": "002594_比亚迪_2024_report.pdf",
+    "category": "financial_analysis",
+    "question": "分析比亚迪2024年的毛利率变化趋势及其主要驱动因素",
+    "hint": "需要结合成本和收入结构分析"
+  },
+  {
+    "id": 6,
+    "company": "贵州茅台",
+    "stock_code": "600519",
+    "report": "600519_贵州茅台_2024_report.pdf",
+    "category": "financial_data",
+    "question": "贵州茅台2024年的营业收入、净利润和毛利率分别是多少？",
+    "hint": "核心财务三指标"
+  },
+  {
+    "id": 7,
+    "company": "贵州茅台",
+    "stock_code": "600519",
+    "report": "600519_贵州茅台_2024_report.pdf",
+    "category": "business_analysis",
+    "question": "贵州茅台2024年直销渠道和批发渠道的收入占比分别是多少？渠道结构有什么变化？",
+    "hint": "销售渠道分析"
+  },
+  {
+    "id": 8,
+    "company": "宁德时代",
+    "stock_code": "300750",
+    "report": "300750_宁德时代_2024_report.pdf",
+    "category": "financial_data",
+    "question": "宁德时代2024年的营业收入和净利润分别是多少？研发费用占营收的比例是多少？",
+    "hint": "收入+利润+研发投入"
+  },
+  {
+    "id": 9,
+    "company": "宁德时代",
+    "stock_code": "300750",
+    "report": "300750_宁德时代_2024_report.pdf",
+    "category": "business_analysis",
+    "question": "宁德时代2024年动力电池和储能电池的收入占比分别是多少？海外收入占比是多少？",
+    "hint": "业务结构和地区分布"
+  },
+  {
+    "id": 10,
+    "company": "平安银行",
+    "stock_code": "000001",
+    "report": "000001_平安银行_2024_report.pdf",
+    "category": "financial_data",
+    "question": "平安银行2024年的净息差是多少？与上年相比变化了多少个基点？",
+    "hint": "银行核心指标"
+  },
+  {
+    "id": 11,
+    "company": "平安银行",
+    "stock_code": "000001",
+    "report": "000001_平安银行_2025_report.pdf",
+    "category": "financial_data",
+    "question": "平安银行2025年的不良贷款率和拨备覆盖率分别是多少？资产质量趋势如何？",
+    "hint": "资产质量指标"
+  },
+  {
+    "id": 12,
+    "company": "招商银行",
+    "stock_code": "600036",
+    "report": "600036_招商银行_2025_report.pdf",
+    "category": "financial_data",
+    "question": "招商银行2025年的营业收入和归母净利润分别是多少？非利息收入占比多少？",
+    "hint": "银行收入结构"
+  },
+  {
+    "id": 13,
+    "company": "招商银行",
+    "stock_code": "600036",
+    "report": "600036_招商银行_2025_report.pdf",
+    "category": "financial_analysis",
+    "question": "分析招商银行2025年零售业务的表现，包括零售贷款规模和零售AUM",
+    "hint": "零售银行是招行核心优势"
+  },
+  {
+    "id": 14,
+    "company": "美的集团",
+    "stock_code": "000333",
+    "report": "000333_美的集团_2025_report.pdf",
+    "category": "financial_data",
+    "question": "美的集团2025年的营业收入和净利润分别是多少？海外收入占比是多少？",
+    "hint": "全球化是美的重要战略"
+  },
+  {
+    "id": 15,
+    "company": "美的集团",
+    "stock_code": "000333",
+    "report": "000333_美的集团_2025_report.pdf",
+    "category": "business_analysis",
+    "question": "美的集团2025年各业务板块（暖通空调、消费电器、机器人与自动化）的收入占比如何？",
+    "hint": "业务板块分析"
+  },
+  {
+    "id": 16,
+    "company": "赛力斯",
+    "stock_code": "601127",
+    "report": "601127_赛力斯_2025_report.pdf",
+    "category": "financial_data",
+    "question": "赛力斯2025年的营业收入和净利润分别是多少？问界系列的销量是多少？",
+    "hint": "华为合作车企"
+  },
+  {
+    "id": 17,
+    "company": "海澜之家",
+    "stock_code": "600398",
+    "report": "600398_海澜之家_2025_report.pdf",
+    "category": "financial_data",
+    "question": "海澜之家2025年的营业收入和净利润分别是多少？门店数量有多少家？",
+    "hint": "零售行业指标"
+  },
+  {
+    "id": 18,
+    "company": "建设银行",
+    "stock_code": "601939",
+    "report": "601939_建设银行_2025_report.pdf",
+    "category": "financial_data",
+    "question": "建设银行2025年的总资产规模和净利润分别是多少？",
+    "hint": "大型国有银行核心指标"
+  },
+  {
+    "id": 19,
+    "company": "比亚迪",
+    "stock_code": "002594",
+    "report": "002594_比亚迪_2024_report.pdf",
+    "category": "risk_analysis",
+    "question": "比亚迪在2024年年报中提到了哪些主要风险因素？公司对这些风险有什么应对措施？",
+    "hint": "风险因素章节"
+  },
+  {
+    "id": 20,
+    "company": "宁德时代",
+    "stock_code": "300750",
+    "report": "300750_宁德时代_2024_report.pdf",
+    "category": "financial_analysis",
+    "question": "宁德时代2024年的经营性现金流量净额是多少？与净利润相比表现如何？",
+    "hint": "现金流质量分析"
+  },
+  {
+    "id": 21,
+    "company": "贵州茅台",
+    "stock_code": "600519",
+    "report": "600519_贵州茅台_2024_report.pdf",
+    "category": "financial_analysis",
+    "question": "贵州茅台2024年的分红方案是什么？股息率大约是多少？",
+    "hint": "利润分配方案"
+  },
+  {
+    "id": 22,
+    "company": "平安银行",
+    "stock_code": "000001",
+    "report": "000001_平安银行_2025_report.pdf",
+    "category": "business_analysis",
+    "question": "平安银行2025年零售转型的最新进展如何？零售贷款占总贷款的比例是多少？",
+    "hint": "零售转型是平安银行战略重点"
+  },
+  {
+    "id": 23,
+    "company": "比亚迪",
+    "stock_code": "002594",
+    "report": "002594_比亚迪_2025_report.pdf",
+    "category": "financial_data",
+    "question": "比亚迪2025年的研发投入总额是多少？研发人员数量有多少？",
+    "hint": "研发投入是比亚迪核心竞争力"
+  },
+  {
+    "id": 24,
+    "company": "宁德时代",
+    "stock_code": "300750",
+    "report": "300750_宁德时代_2025_report.pdf",
+    "category": "business_analysis",
+    "question": "宁德时代2025年全球动力电池市场份额是多少？主要竞争对手有哪些？",
+    "hint": "行业地位分析"
+  },
+  {
+    "id": 25,
+    "company": "工商银行",
+    "stock_code": "601398",
+    "report": "601398_工商银行_2024_report.pdf",
+    "category": "financial_analysis",
+    "question": "工商银行2024年的资本充足率是多少？是否满足监管要求？",
+    "hint": "银行监管指标"
+  },
+  {
+    "id": 26,
+    "company": "美的集团",
+    "stock_code": "000333",
+    "report": "000333_美的集团_2025_report.pdf",
+    "category": "financial_analysis",
+    "question": "美的集团2025年的存货周转天数和应收账款周转天数分别是多少？运营效率如何？",
+    "hint": "运营效率分析"
+  },
+  {
+    "id": 27,
+    "company": "寒武纪",
+    "stock_code": "688256",
+    "report": "688256_寒武纪_2025Q3_report.pdf",
+    "category": "financial_data",
+    "question": "寒武纪2025年前三季度的营业收入和净利润分别是多少？是否实现盈利？",
+    "hint": "AI芯片概念股"
+  },
+  {
+    "id": 28,
+    "company": "洋河股份",
+    "stock_code": "002304",
+    "report": "002304_洋河股份_2025Q3_report.pdf",
+    "category": "financial_data",
+    "question": "洋河股份2025年前三季度的营业收入和净利润分别是多少？",
+    "hint": "白酒行业"
+  },
+  {
+    "id": 29,
+    "company": "招商银行",
+    "stock_code": "600036",
+    "report": "600036_招商银行_2025_report.pdf",
+    "category": "comparison",
+    "question": "招商银行2025年的ROE（净资产收益率）是多少？在股份制银行中处于什么水平？",
+    "hint": "盈利能力对标"
+  },
+  {
+    "id": 30,
+    "company": "赛力斯",
+    "stock_code": "601127",
+    "report": "601127_赛力斯_2025_report.pdf",
+    "category": "business_analysis",
+    "question": "赛力斯2025年与华为合作的具体模式是什么？问界品牌的定位和产品线如何？",
+    "hint": "商业模式分析"
+  }
+]
